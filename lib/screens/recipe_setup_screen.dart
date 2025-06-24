@@ -106,8 +106,7 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTextField(
-                controller: _dateController, label: '날짜 (예: 2024-03-02)'),
+            _buildTextField(controller: _dateController, label: '제목을 입력해주세요.'),
             if (widget.category == "coffee") ...[
               const SizedBox(height: 10),
               const Text('원두 타입',
