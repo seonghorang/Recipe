@@ -4,6 +4,7 @@ import 'screens/recipe_list_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/recipe_detail_screen.dart';
+import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // ✅ Firebase 초기화 전에 호출해야 함
@@ -161,7 +162,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ? recipeData['recipeName'] // 요리 이름으로 설정
                                   : '요리 이름 없음'), // 요리 이름이 없을 경우
                         ),
-                        subtitle: Text(recipe['title']), // 레시피 제목
+                        subtitle: Text(
+                          recipe['createdAt'] != null
+                              ? DateFormat('yyyy년 MM월 dd일')
+                                  .format(recipe['createdAt'].toDate())
+                              : '날짜 없음',
+                        ), // 레시피 제목
                         onTap: () {
                           Navigator.push(
                             context,
