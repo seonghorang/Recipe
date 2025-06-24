@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'recipe_detail_screen.dart';
 import 'recipe_setup_screen.dart';
+import 'package:intl/intl.dart';
 
 class RecipeListScreen extends StatefulWidget {
   const RecipeListScreen({super.key});
@@ -69,8 +70,12 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                           ? recipe['recipeName']
                           : '없음')),
                 ),
-                subtitle:
-                    Text(recipe['createdAt']?.toDate().toString() ?? '날짜 없음'),
+                subtitle: Text(
+                  recipe['createdAt'] != null
+                      ? DateFormat('yyyy년 MM월 dd일')
+                          .format(recipe['createdAt'].toDate())
+                      : '날짜 없음',
+                ),
                 onTap: () {
                   Navigator.push(
                     context,
