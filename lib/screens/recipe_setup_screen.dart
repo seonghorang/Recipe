@@ -45,6 +45,9 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
     Map<String, dynamic> recipeData = {
       'title': _dateController.text,
       'category': widget.category,
+      'createdAt': FieldValue.serverTimestamp(),
+      'wifeRating': 0.0,
+      'wifeReview': '',
     };
 
     if (widget.category == "coffee") {

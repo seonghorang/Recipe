@@ -128,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     .collection('recipes')
                     .where('category',
                         isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
-                    .orderBy('title', descending: true)
+                    .orderBy('createdAt', descending: true)
                     .limit(5)
                     .snapshots(),
                 builder: (context, snapshot) {

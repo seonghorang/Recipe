@@ -42,7 +42,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       body: StreamBuilder(
         stream: recipesCollection
             .where('category', isEqualTo: selectedCategory)
-            .orderBy('title', descending: true)
+            .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -69,7 +69,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                           ? recipe['recipeName']
                           : '없음')),
                 ),
-                subtitle: Text(recipe['title']),
+                subtitle:
+                    Text(recipe['createdAt']?.toDate().toString() ?? '날짜 없음'),
                 onTap: () {
                   Navigator.push(
                     context,
