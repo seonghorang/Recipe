@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'recipe_setup_screen.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
-  final String recipeId; // 레시피 문서 ID 추가
-
+  final String recipeId;
   const RecipeDetailScreen({super.key, required this.recipeId});
 
   @override
@@ -12,203 +13,363 @@ class RecipeDetailScreen extends StatefulWidget {
 }
 
 class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
-  DocumentSnapshot? recipeData;
-  final TextEditingController _reviewController = TextEditingController();
-  double _wifeRating = 0.0; // 별점 상태
+  final _reviewController = TextEditingController();
+  double _currentRating = 0.0;
 
   @override
-  void initState() {
-    super.initState();
-    _loadRecipeData(); // Firestore에서 레시피 데이터 불러오기
+  void dispose() {
+    _reviewController.dispose();
+    super.dispose();
   }
 
-  Future<void> _loadRecipeData() async {
-    DocumentSnapshot doc = await FirebaseFirestore.instance
-        .collection('recipes')
-        .doc(widget.recipeId)
-        .get();
-
-    if (doc.exists) {
-      setState(() {
-        recipeData = doc;
-        _reviewController.text = doc.data().toString().contains('wifeReview')
-            ? doc['wifeReview']
-            : ''; // 기존 평 불러오기
-        _wifeRating = doc.data().toString().contains('wifeRating')
-            ? (doc['wifeRating']?.toDouble() ?? 0.0)
-            : 0.0; // 기존 별점 불러오기
-      });
+  void _updateRatingAndReview(String recipeId, double rating, String review) {
+    if (rating < 0 || rating > 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('별점은 0에서 5 사이로 선택하세요')),
+      );
+      return;
     }
-  }
-
-  Future<void> _saveReview() async {
-    await FirebaseFirestore.instance
-        .collection('recipes')
-        .doc(widget.recipeId)
-        .update({
-      'wifeReview': _reviewController.text,
-      'wifeRating': _wifeRating, // 별점 저장
+    FirebaseFirestore.instance.collection('recipes').doc(recipeId).update({
+      'wifeRating': rating,
+      'wifeReview': review,
+    }).then((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('별점 및 리뷰가 업데이트되었습니다')),
+      );
+    }).catchError((error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('업데이트 실패: $error')),
+      );
     });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('미깅이의 평가가 저장되었습니다.')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(recipeData?['title'] ?? '레시피 상세')), // 제목 표시
-      body: recipeData == null
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (recipeData?['category'] == 'coffee') ...[
-                    const Text("원두 타입",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text(
-                      recipeData?['beanType'] ?? '정보 없음',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text("원두 정보",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    ConstrainedBox(
-                      constraints:
-                          const BoxConstraints(maxWidth: 135), // ✅ 최대 너비 설정
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: (recipeData?['beans'] as List<dynamic>? ?? [])
-                            .map((bean) => Row(
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                        flex: 2,
-                                        child: Text(bean['name'],
-                                            textAlign: TextAlign.left)),
-                                    const SizedBox(width: 8),
-                                    const Text(':'),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                        flex: 1,
-                                        child: Text("${bean['weight']}g",
-                                            textAlign: TextAlign.right)),
-                                  ],
-                                ))
-                            .toList(),
+      appBar: AppBar(
+        title: const Text(
+          '레시피 상세',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Colors.brown[700],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit, color: Colors.white),
+            onPressed: () {
+              FirebaseFirestore.instance
+                  .collection('recipes')
+                  .doc(widget.recipeId)
+                  .get()
+                  .then((doc) {
+                if (doc.exists) {
+                  final category = doc.data()!['category'] as String;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RecipeSetupScreen(
+                        recipeId: widget.recipeId,
+                        isEditing: true,
+                        category: category,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    const Text("블루밍",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                  );
+                }
+              });
+            },
+            tooltip: '레시피 편집',
+          ),
+        ],
+      ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('recipes')
+            .doc(widget.recipeId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            print('Firestore Error: ${snapshot.error}'); // 디버깅 로그
+            return Center(child: Text('오류 발생: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const Center(child: Text('레시피를 찾을 수 없습니다'));
+          }
+
+          var data = snapshot.data!.data() as Map<String, dynamic>;
+          // Firestore 데이터 로드
+          final rating = (data['wifeRating'] as num?)?.toDouble() ?? 0.0;
+          final review = data['wifeReview'] as String? ?? '';
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              color: Colors.brown[50],
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 레시피 제목
                     Text(
-                      "물: ${recipeData?['blooming']['water']}g, 시간: ${recipeData?['blooming']['time']}초",
-                      style: const TextStyle(fontSize: 16),
+                      data['title'] ?? '제목 없음',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.brown[900],
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    const Text("추출 단계",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    Column(
-                      children: (recipeData?['extractions'] as List<dynamic>? ??
-                              [])
-                          .map((stage) =>
-                              Text("${stage['stage']}차: ${stage['water']}g"))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
+                    // 생성 날짜
                     Text(
-                      "가수 여부: ${recipeData?['additionalWater'] == true ? '예' : '아니오'}",
-                      style: const TextStyle(fontSize: 16),
+                      data['createdAt'] != null
+                          ? DateFormat('yyyy년 MM월 dd일')
+                              .format(data['createdAt'].toDate())
+                          : '날짜 없음',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.brown[600],
+                      ),
                     ),
-                  ] else if (recipeData?['category'] == 'cooking') ...[
-                    const Text("요리 이름",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text(
-                      recipeData?['recipeName'] ?? '정보 없음',
-                      style: const TextStyle(fontSize: 16),
+                    const SizedBox(height: 16),
+                    // 카테고리
+                    Row(
+                      children: [
+                        Icon(Icons.category,
+                            size: 20, color: Colors.brown[700]),
+                        const SizedBox(width: 8),
+                        Text(
+                          '카테고리: ${data['category'] == 'coffee' ? '커피' : '요리'}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.brown[800],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    const Text("재료 목록",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    // 커피 레시피 상세
+                    if (data['category'] == 'coffee') ...[
+                      _buildDetailRow(
+                        icon: Icons.local_cafe,
+                        label: '원두 타입',
+                        value: data['beanType'] ?? '없음',
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDetailRow(
+                        icon: Icons.grain,
+                        label: '원두',
+                        value: (data['beans'] as List<dynamic>?)
+                                ?.map((b) => '${b['name']} (${b['weight']}g)')
+                                .join(', ') ??
+                            '없음',
+                      ),
+                      if (data['blooming'] != null &&
+                          (data['blooming']['water'] ?? 0) > 0)
+                        _buildDetailRow(
+                          icon: Icons.water_drop,
+                          label: '블루밍',
+                          value:
+                              '${data['blooming']['water']}ml, ${data['blooming']['time']}초',
+                        ),
+                      if ((data['extractions'] as List<dynamic>?)?.isNotEmpty ??
+                          false)
+                        _buildExtractionDetails(
+                          icon: Icons.filter_alt,
+                          label: '추출 단계',
+                          extractions: data['extractions'] as List<dynamic>,
+                        ),
+                      if (data['additionalWater'] == true)
+                        _buildDetailRow(
+                          icon: Icons.waves,
+                          label: '가수량',
+                          value: '${data['additionalWaterAmount'] ?? 0}ml',
+                        ),
+                    ]
+                    // 요리 레시피 상세
+                    else ...[
+                      _buildDetailRow(
+                        icon: Icons.restaurant_menu,
+                        label: '요리 이름',
+                        value: data['recipeName'] ?? '없음',
+                      ),
+                      if (data['ingredients']?.isNotEmpty ?? false)
+                        _buildDetailRow(
+                          icon: Icons.list_alt,
+                          label: '재료',
+                          value: data['ingredients'],
+                        ),
+                      if (data['instructions']?.isNotEmpty ?? false)
+                        _buildDetailRow(
+                          icon: Icons.description,
+                          label: '조리법',
+                          value: data['instructions'],
+                        ),
+                    ],
+                    const SizedBox(height: 24),
+                    // 별점 및 리뷰 섹션
                     Text(
-                      recipeData?['ingredients'] ?? '정보 없음',
-                      style: const TextStyle(fontSize: 16),
+                      '별점 및 리뷰',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.brown[800],
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    const Text("조리 방법",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text(
-                      recipeData?['instructions'] ?? '정보 없음',
-                      style: const TextStyle(fontSize: 16),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(
+                          '별점: ',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.brown[600],
+                          ),
+                        ),
+                        RatingBar.builder(
+                          initialRating: rating,
+                          minRating: 0,
+                          direction: Axis.horizontal,
+                          allowHalfRating: true,
+                          itemCount: 5,
+                          itemSize: 30,
+                          itemBuilder: (context, _) => Icon(
+                            Icons.star,
+                            color: Colors.amber,
+                          ),
+                          onRatingUpdate: (newRating) {
+                            setState(() {
+                              _currentRating = newRating;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _reviewController..text = review,
+                      decoration: InputDecoration(
+                        labelText: '리뷰',
+                        labelStyle: TextStyle(color: Colors.brown[600]),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon:
+                            const Icon(Icons.comment, color: Colors.brown),
+                      ),
+                      maxLines: 3,
+                      onChanged: (value) {
+                        // 리뷰 입력 시 _reviewController 업데이트
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FloatingActionButton(
+                        onPressed: () => _updateRatingAndReview(
+                          widget.recipeId,
+                          _currentRating != 0.0 ? _currentRating : rating,
+                          _reviewController.text,
+                        ),
+                        backgroundColor: Colors.brown[700],
+                        child: const Icon(Icons.save, color: Colors.white),
+                        tooltip: '별점 및 리뷰 저장',
+                      ),
                     ),
                   ],
-                  const SizedBox(height: 20),
-                  const Text("미깅이의 평",
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  TextField(
-                    controller: _reviewController,
-                    decoration: InputDecoration(
-                      hintText: recipeData?['category'] == 'coffee'
-                          ? '커피가 어땠나요?'
-                          : '요리가 맛있었나요?', // 카테고리에 따라 다르게 표시
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(10), // ✅ 네모 박스 테두리 적용
-                        borderSide:
-                            BorderSide(color: Colors.grey.shade400, width: 1.5),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                            color: Color.fromARGB(255, 97, 60, 35), width: 1),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.orange, width: 2),
-                      ),
-                    ),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 10),
-                  const Text("별점",
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  RatingBar(
-                    initialRating: _wifeRating,
-                    minRating: 1,
-                    direction: Axis.horizontal,
-                    allowHalfRating: true,
-                    itemCount: 5,
-                    itemSize: 40.0,
-                    ratingWidget: RatingWidget(
-                      full: const Icon(Icons.star, color: Colors.orange),
-                      half: const Icon(Icons.star_half, color: Colors.orange),
-                      empty:
-                          const Icon(Icons.star_border, color: Colors.orange),
-                    ),
-                    onRatingUpdate: (rating) {
-                      setState(() {
-                        _wifeRating = rating; // 별점 업데이트
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton(
-                    onPressed: _saveReview,
-                    child: const Text('저장'),
-                  ),
-                ],
+                ),
               ),
             ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDetailRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: Colors.brown[700]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.brown[800],
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.brown[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExtractionDetails({
+    required IconData icon,
+    required String label,
+    required List<dynamic> extractions,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: Colors.brown[700]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.brown[800],
+                  ),
+                ),
+                ...extractions.map((e) => Text(
+                      '${e['stage']} 단계: ${e['water']}ml',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.brown[600],
+                      ),
+                    )),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
