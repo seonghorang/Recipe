@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'recipe_detail_screen.dart';
 import 'recipe_setup_screen.dart';
-import 'package:intl/intl.dart';
 
 class RecipeListScreen extends StatefulWidget {
   const RecipeListScreen({super.key});
@@ -14,7 +14,7 @@ class RecipeListScreen extends StatefulWidget {
 class _RecipeListScreenState extends State<RecipeListScreen> {
   final CollectionReference recipesCollection =
       FirebaseFirestore.instance.collection('recipes');
-  String selectedCategory = 'coffee'; // 기본 카테고리를 커피로 설정
+  String selectedCategory = 'coffee';
 
   @override
   Widget build(BuildContext context) {
@@ -55,39 +55,84 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
           final recipes = snapshot.data?.docs ?? [];
           return ListView.builder(
+            padding: const EdgeInsets.all(8.0),
             itemCount: recipes.length,
             itemBuilder: (context, index) {
               var recipe = recipes[index];
-              return ListTile(
-                title: Text(
-                  (recipe['category'] == 'coffee'
-                      ? (recipe.data().toString().contains('beans')
-                          ? (recipe['beans'] as List<dynamic>)
-                              .map((bean) => bean['name'])
-                              .join(', ')
-                          : '없음')
-                      : (recipe.data().toString().contains('recipeName')
-                          ? recipe['recipeName']
-                          : '없음')),
+              return Card(
+                elevation: 2,
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                subtitle: Text(
-                  recipe['createdAt'] != null
-                      ? DateFormat('yyyy년 MM월 dd일')
-                          .format(recipe['createdAt'].toDate())
-                      : '날짜 없음',
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          RecipeDetailScreen(recipeId: recipe.id),
-                    ),
-                  );
-                },
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _deleteRecipe(recipe.id),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            RecipeDetailScreen(recipeId: recipe.id),
+                      ),
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                recipe['title'] ?? '제목 없음',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '카테고리: ${recipe['category'] == 'coffee' ? '커피' : '요리'}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              Text(
+                                recipe['createdAt'] != null
+                                    ? DateFormat('yyyy년 MM월 dd일')
+                                        .format(recipe['createdAt'].toDate())
+                                    : '날짜 없음',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              if (recipe['wifeRating'] != null &&
+                                  recipe['wifeRating'] > 0)
+                                Row(
+                                  children: List.generate(
+                                    5,
+                                    (i) => Icon(
+                                      i < recipe['wifeRating']
+                                          ? Icons.star
+                                          : Icons.star_border,
+                                      size: 16,
+                                      color: Colors.amber,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => _deleteRecipe(recipe.id),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -107,5 +152,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
   void _deleteRecipe(String id) {
     recipesCollection.doc(id).delete();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('레시피가 삭제되었습니다')),
+    );
   }
 }
