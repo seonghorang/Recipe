@@ -4,6 +4,7 @@ import 'screens/recipe_list_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/recipe_detail_screen.dart';
+import 'screens/statistics_screen.dart';
 import 'package:intl/intl.dart';
 
 void main() async {
@@ -38,14 +39,16 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const RecipeListScreen(),
+  static const List<Widget> _screens = [
+    HomeScreen(),
+    RecipeListScreen(),
+    StatisticsScreen(),
   ];
 
   void _onItemTapped(int index) {
+    print('Tapped index: $index'); // 디버깅 로그
     setState(() {
-      _selectedIndex = index;
+      _selectedIndex = index.clamp(0, _screens.length - 1); // 인덱스 범위 제한
     });
   }
 
@@ -57,6 +60,7 @@ class _MainScreenState extends State<MainScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
           BottomNavigationBarItem(icon: Icon(Icons.list), label: '레시피'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: '통계'),
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'recipe_setup_screen.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
@@ -32,6 +33,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     FirebaseFirestore.instance.collection('recipes').doc(recipeId).update({
       'wifeRating': rating,
       'wifeReview': review,
+    });
+    FirebaseFirestore.instance
+        .collection('recipes')
+        .doc(recipeId)
+        .collection('ratingHistory')
+        .add({
+      'timestamp': Timestamp.now(),
+      'rating': rating,
     }).then((_) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('별점 및 리뷰가 업데이트되었습니다')),
@@ -93,7 +102,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            print('Firestore Error: ${snapshot.error}'); // 디버깅 로그
+            print('Firestore Error: ${snapshot.error}');
             return Center(child: Text('오류 발생: ${snapshot.error}'));
           }
           if (!snapshot.hasData || !snapshot.data!.exists) {
@@ -101,7 +110,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           }
 
           var data = snapshot.data!.data() as Map<String, dynamic>;
-          // Firestore 데이터 로드
           final rating = (data['wifeRating'] as num?)?.toDouble() ?? 0.0;
           final review = data['wifeReview'] as String? ?? '';
 
@@ -118,7 +126,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 레시피 제목
                     Text(
                       data['title'] ?? '제목 없음',
                       style: TextStyle(
@@ -128,7 +135,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // 생성 날짜
                     Text(
                       data['createdAt'] != null
                           ? DateFormat('yyyy년 MM월 dd일')
@@ -140,7 +146,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // 카테고리
                     Row(
                       children: [
                         Icon(Icons.category,
@@ -157,7 +162,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // 커피 레시피 상세
                     if (data['category'] == 'coffee') ...[
                       _buildDetailRow(
                         icon: Icons.local_cafe,
@@ -194,9 +198,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           label: '가수량',
                           value: '${data['additionalWaterAmount'] ?? 0}ml',
                         ),
-                    ]
-                    // 요리 레시피 상세
-                    else ...[
+                    ] else ...[
                       _buildDetailRow(
                         icon: Icons.restaurant_menu,
                         label: '요리 이름',
@@ -216,7 +218,130 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                         ),
                     ],
                     const SizedBox(height: 24),
-                    // 별점 및 리뷰 섹션
+                    Text(
+                      '별점 이력',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.brown[800],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('recipes')
+                          .doc(widget.recipeId)
+                          .collection('ratingHistory')
+                          .orderBy('timestamp')
+                          .snapshots(),
+                      builder: (context, historySnapshot) {
+                        if (historySnapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        if (historySnapshot.hasError) {
+                          print(
+                              'Rating History Error: ${historySnapshot.error}');
+                          return Text('오류: ${historySnapshot.error}');
+                        }
+                        if (!historySnapshot.hasData ||
+                            historySnapshot.data!.docs.isEmpty) {
+                          return const Text('별점 이력이 없습니다.');
+                        }
+
+                        final history = historySnapshot.data!.docs
+                            .map((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              print('Rating History Doc: $data');
+                              final timestamp = data['timestamp'];
+                              final rating = data['rating'];
+
+                              DateTime? parsedTimestamp;
+                              double parsedRating = 0.0;
+
+                              if (timestamp is Timestamp) {
+                                parsedTimestamp = timestamp.toDate();
+                              } else if (timestamp is String) {
+                                parsedTimestamp = DateTime.tryParse(timestamp);
+                              }
+
+                              if (rating is num) {
+                                parsedRating = rating.toDouble();
+                              } else if (rating is String) {
+                                parsedRating = double.tryParse(rating) ?? 0.0;
+                              }
+
+                              return {
+                                'timestamp': parsedTimestamp,
+                                'rating': parsedRating,
+                              };
+                            })
+                            .where((entry) => entry['timestamp'] != null)
+                            .toList();
+
+                        if (history.isEmpty) {
+                          return const Text('유효한 별점 이력이 없습니다.');
+                        }
+
+                        return SizedBox(
+                          height: 200,
+                          child: LineChart(
+                            LineChartData(
+                              gridData: const FlGridData(show: true),
+                              titlesData: FlTitlesData(
+                                bottomTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    getTitlesWidget: (value, meta) {
+                                      final date =
+                                          DateTime.fromMillisecondsSinceEpoch(
+                                              value.toInt());
+                                      return Text(
+                                        DateFormat('MM/dd').format(date),
+                                        style: const TextStyle(fontSize: 10),
+                                      );
+                                    },
+                                    interval: 1000 * 60 * 60 * 24 * 30,
+                                  ),
+                                ),
+                                leftTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    getTitlesWidget: (value, meta) {
+                                      return Text(
+                                        value.toStringAsFixed(1),
+                                        style: const TextStyle(fontSize: 10),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                              borderData: FlBorderData(show: true),
+                              lineBarsData: [
+                                LineChartBarData(
+                                  spots: history
+                                      .asMap()
+                                      .entries
+                                      .map((e) => FlSpot(
+                                          (e.value['timestamp'] as DateTime)
+                                              .millisecondsSinceEpoch
+                                              .toDouble(),
+                                          e.value['rating'] as double))
+                                      .toList(),
+                                  isCurved: true,
+                                  color: Colors.brown[700],
+                                  dotData: const FlDotData(show: true),
+                                ),
+                              ],
+                              minY: 0,
+                              maxY: 5,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 24),
                     Text(
                       '별점 및 리뷰',
                       style: TextStyle(
@@ -267,9 +392,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                             const Icon(Icons.comment, color: Colors.brown),
                       ),
                       maxLines: 3,
-                      onChanged: (value) {
-                        // 리뷰 입력 시 _reviewController 업데이트
-                      },
                     ),
                     const SizedBox(height: 16),
                     Align(
