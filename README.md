@@ -17,7 +17,7 @@ Backend: Firebase Firestore (실시간 데이터베이스)
 - 통계 탭에서 월별 레시피 수와 별점 분포 시각화
 - 반응형 UI 및 테마 기반 디자인 (브라운 테마)
 
-[![Recipe Manager Demo](https://github.com/seonghorang/Recipe/issues/1)]
+[![Recipe Manager Demo](C:\Users\user\Desktop\seongho\App\recipe_manager\assets\Recording.mp4)]
 
 
 상태: 지속적 유지보수 중 (최근 업데이트: 2025년 6월 27일)
