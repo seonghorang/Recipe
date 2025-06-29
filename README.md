@@ -2,7 +2,7 @@
   
 이 프로젝트는 핸드드립 레시피와 요리 레시피를 관리하는 Flutter 기반 모바일 애플리케이션입니다. 사용자는 레시피를 추가, 편집, 삭제하고, Firestore를 통해 데이터를 저장하며, 통계 탭에서 데이터 시각화를 통해 레시피 패턴을 분석할 수 있습니다. 지속적인 유지보수와 기능 개선을 통해 개발 기술을 연마하고 있습니다.
 
-[![Recipe Manager Demo](assets/Recording.gif)]
+![Recipe Manager Demo](assets/Recording.gif)
 
 
 ## 프로젝트 개요
