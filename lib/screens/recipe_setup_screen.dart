@@ -298,153 +298,165 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isEditing
-            ? '${widget.category == 'coffee' ? '커피' : '요리'} 레시피 수정'
-            : '${widget.category == 'coffee' ? '커피' : '요리'} 레시피 추가'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _buildTextField(
-              controller: _titleController,
-              label: '제목',
-              hintText: '레시피 제목을 입력하세요 (예: 에티오피아 커피)',
-            ),
-            if (widget.category == 'coffee') ...[
-              DropdownButton<String>(
-                value: _beanType,
-                onChanged: (value) {
-                  setState(() {
-                    _beanType = value!;
-                  });
-                },
-                items: const [
-                  DropdownMenuItem(
-                      value: 'single', child: Text('Single Origin')),
-                  DropdownMenuItem(value: 'blend', child: Text('Blend')),
-                ],
-              ),
-              ..._beans.asMap().entries.map((entry) {
-                int index = entry.key;
-                var bean = entry.value;
-                return Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        controller: TextEditingController(text: bean['name']),
-                        label: '원두 이름',
-                        onChanged: (value) => bean['name'] = value,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildTextField(
-                        controller: TextEditingController(text: bean['weight']),
-                        label: '무게 (g)',
-                        keyboardType: TextInputType.number,
-                        onChanged: (value) => bean['weight'] = value,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.remove_circle, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          _beans.removeAt(index);
-                        });
-                      },
-                    ),
-                  ],
-                );
-              }).toList(),
-              ElevatedButton(
-                onPressed: _addBean,
-                child: const Text('원두 추가'),
-              ),
+    return SafeArea(
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.isEditing
+              ? '${widget.category == 'coffee' ? '커피' : '요리'} 레시피 수정'
+              : '${widget.category == 'coffee' ? '커피' : '요리'} 레시피 추가'),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0),
+          child: Column(
+            children: [
               _buildTextField(
-                controller: _bloomingWaterController,
-                label: '블루밍 물량 (ml)',
-                keyboardType: TextInputType.number,
+                controller: _titleController,
+                label: '제목',
+                hintText: '레시피 제목을 입력하세요 (예: 에티오피아 커피)',
               ),
-              _buildTextField(
-                controller: _bloomingTimeController,
-                label: '블루밍 시간 (초)',
-                keyboardType: TextInputType.number,
-              ),
-              ..._extractions.asMap().entries.map((entry) {
-                int index = entry.key;
-                var extraction = entry.value;
-                return Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        controller:
-                            TextEditingController(text: extraction['stage']),
-                        label: '추출 단계',
-                        onChanged: (value) => extraction['stage'] = value,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildTextField(
-                        controller:
-                            TextEditingController(text: extraction['water']),
-                        label: '물량 (ml)',
-                        keyboardType: TextInputType.number,
-                        onChanged: (value) => extraction['water'] = value,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.remove_circle, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          _extractions.removeAt(index);
-                        });
-                      },
-                    ),
+              if (widget.category == 'coffee') ...[
+                DropdownButton<String>(
+                  value: _beanType,
+                  onChanged: (value) {
+                    setState(() {
+                      _beanType = value!;
+                    });
+                  },
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'single', child: Text('Single Origin')),
+                    DropdownMenuItem(value: 'blend', child: Text('Blend')),
                   ],
-                );
-              }).toList(),
-              ElevatedButton(
-                onPressed: _addExtraction,
-                child: const Text('추출 단계 추가'),
-              ),
-              CheckboxListTile(
-                title: const Text('가수 여부'),
-                value: _additionalWater,
-                onChanged: (value) {
-                  setState(() {
-                    _additionalWater = value!;
-                  });
-                },
-              ),
-              if (_additionalWater)
+                ),
+                ..._beans.asMap().entries.map((entry) {
+                  int index = entry.key;
+                  var bean = entry.value;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: TextEditingController(text: bean['name']),
+                          label: '원두 이름',
+                          onChanged: (value) => bean['name'] = value,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildTextField(
+                          controller:
+                              TextEditingController(text: bean['weight']),
+                          label: '무게 (g)',
+                          keyboardType: TextInputType.number,
+                          onChanged: (value) => bean['weight'] = value,
+                        ),
+                      ),
+                      IconButton(
+                        icon:
+                            const Icon(Icons.remove_circle, color: Colors.red),
+                        onPressed: () {
+                          setState(() {
+                            _beans.removeAt(index);
+                          });
+                        },
+                      ),
+                    ],
+                  );
+                }).toList(),
+                ElevatedButton(
+                  onPressed: _addBean,
+                  child: const Text('원두 추가'),
+                ),
                 _buildTextField(
-                  controller: _additionalWaterAmountController,
-                  label: '가수량 (ml)',
+                  controller: _bloomingWaterController,
+                  label: '블루밍 물량 (ml)',
                   keyboardType: TextInputType.number,
                 ),
-            ] else ...[
-              _buildTextField(
-                controller: _recipeNameController,
-                label: '요리 이름',
-              ),
-              _buildTextField(
-                controller: _ingredientsController,
-                label: '재료',
-              ),
-              _buildTextField(
-                controller: _instructionsController,
-                label: '조리법',
-              ),
+                _buildTextField(
+                  controller: _bloomingTimeController,
+                  label: '블루밍 시간 (초)',
+                  keyboardType: TextInputType.number,
+                ),
+                ..._extractions.asMap().entries.map((entry) {
+                  int index = entry.key;
+                  var extraction = entry.value;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller:
+                              TextEditingController(text: extraction['stage']),
+                          label: '추출 단계',
+                          onChanged: (value) => extraction['stage'] = value,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildTextField(
+                          controller:
+                              TextEditingController(text: extraction['water']),
+                          label: '물량 (ml)',
+                          keyboardType: TextInputType.number,
+                          onChanged: (value) => extraction['water'] = value,
+                        ),
+                      ),
+                      IconButton(
+                        icon:
+                            const Icon(Icons.remove_circle, color: Colors.red),
+                        onPressed: () {
+                          setState(() {
+                            _extractions.removeAt(index);
+                          });
+                        },
+                      ),
+                    ],
+                  );
+                }).toList(),
+                ElevatedButton(
+                  onPressed: _addExtraction,
+                  child: const Text('추출 단계 추가'),
+                ),
+                CheckboxListTile(
+                  title: const Text('가수 여부'),
+                  value: _additionalWater,
+                  onChanged: (value) {
+                    setState(() {
+                      _additionalWater = value!;
+                    });
+                  },
+                ),
+                if (_additionalWater)
+                  _buildTextField(
+                    controller: _additionalWaterAmountController,
+                    label: '가수량 (ml)',
+                    keyboardType: TextInputType.number,
+                  ),
+              ] else ...[
+                _buildTextField(
+                  controller: _recipeNameController,
+                  label: '요리 이름',
+                ),
+                _buildTextField(
+                  controller: _ingredientsController,
+                  label: '재료',
+                ),
+                _buildTextField(
+                  controller: _instructionsController,
+                  label: '조리법',
+                ),
+              ],
+              // ElevatedButton(
+              //   onPressed: _saveRecipe,
+              //   child: Text(widget.isEditing ? '수정 저장' : '레시피 추가'),
+              // ),
             ],
-            ElevatedButton(
-              onPressed: _saveRecipe,
-              child: Text(widget.isEditing ? '수정 저장' : '레시피 추가'),
-            ),
-          ],
+          ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _saveRecipe,
+          backgroundColor: Colors.brown[700],
+          foregroundColor: Colors.white,
+          tooltip: '레시피 저장',
+          child: const Icon(Icons.save),
         ),
       ),
     );
