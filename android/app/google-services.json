@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:645349953984:android:73896b35975ec9f90bb825",
+        "mobilesdk_app_id": "1:645349953984:android:7e5aa56212bde3ad0bb825",
         "android_client_info": {
-          "package_name": "com.example.recipe_manager"
+          "package_name": "com.hoshi.recipe_manager"
         }
       },
       "oauth_client": [],

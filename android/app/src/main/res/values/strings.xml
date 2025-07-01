@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Recipe Manager</string>
+    <string name="recipe_manager_channel">Recipe Manager Notifications</string>
+    <string name="recipe_manager_channel_description">Notifications for recipe updates</string>
+</resources>
