@@ -6,7 +6,8 @@
         android:label="recipe_manager"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/LaunchTheme">
+        android:theme="@style/LaunchTheme"
+        android:enableOnBackInvokedCallback="true">
         <service
             android:name=".MyFirebaseMessagingService"
             android:exported="false">

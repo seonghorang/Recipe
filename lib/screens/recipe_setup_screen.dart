@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class RecipeSetupScreen extends StatefulWidget {
   final String? recipeId; // 편집용
@@ -19,7 +20,9 @@ class RecipeSetupScreen extends StatefulWidget {
 class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
   final _titleController = TextEditingController();
   String _beanType = 'single';
-  final List<Map<String, String>> _beans = [];
+  List<Map<String, dynamic>> _beans =
+      []; // [{beanId: String, weight: String, name: String}]
+  List<Map<String, dynamic>> _beanOptions = []; // [{id: String, name: String}]
   final _bloomingWaterController = TextEditingController();
   final _bloomingTimeController = TextEditingController();
   final List<Map<String, String>> _extractions = [];
@@ -28,16 +31,26 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
   final _recipeNameController = TextEditingController();
   final _ingredientsController = TextEditingController();
   final _instructionsController = TextEditingController();
-
-  Map<String, dynamic>? _recentRecipe; // 최근 레시피 데이터 저장
+  Map<String, dynamic>? _recentRecipe;
 
   @override
   void initState() {
     super.initState();
-    _loadRecentRecipe(); // 새 레시피 추가 시 최근 레시피 불러오기
+    _loadBeans();
+    _loadRecentRecipe();
     if (widget.isEditing && widget.recipeId != null) {
-      _loadRecipeData(); // 편집 모드에서 기존 레시피 데이터 불러오기
+      _loadRecipeData();
     }
+  }
+
+  Future<void> _loadBeans() async {
+    var snapshot = await FirebaseFirestore.instance.collection('beans').get();
+    setState(() {
+      _beanOptions = snapshot.docs
+          .map((doc) => {'id': doc.id, 'name': doc['name']})
+          .toList();
+      print('Beans loaded: $_beanOptions'); // 디버깅 로그
+    });
   }
 
   @override
@@ -53,7 +66,7 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
   }
 
   Future<void> _loadRecentRecipe() async {
-    if (widget.isEditing) return; // 편집 모드에서는 건너뜀
+    if (widget.isEditing) return;
     final snapshot = await FirebaseFirestore.instance
         .collection('recipes')
         .where('category', isEqualTo: widget.category)
@@ -63,16 +76,16 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
     if (snapshot.docs.isNotEmpty) {
       setState(() {
         _recentRecipe = snapshot.docs.first.data();
-        // 최근 레시피 데이터로 필드 미리 채우기
         if (widget.category == 'coffee') {
           _beanType = _recentRecipe!['beanType'] ?? 'single';
-          _beans.addAll((_recentRecipe!['beans'] as List<dynamic>?)
+          _beans = (_recentRecipe!['beans'] as List<dynamic>?)
                   ?.map((b) => {
-                        'name': b['name'].toString(),
-                        'weight': b['weight'].toString(),
+                        'beanId': b['beanId']?.toString() ?? '',
+                        'weight': b['weight']?.toString() ?? '',
+                        'name': b['name']?.toString() ?? '',
                       })
                   .toList() ??
-              []);
+              [];
           _bloomingWaterController.text =
               _recentRecipe!['blooming']?['water']?.toString() ?? '';
           _bloomingTimeController.text =
@@ -107,13 +120,14 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
         _titleController.text = data['title'] ?? '';
         if (data['category'] == 'coffee') {
           _beanType = data['beanType'] ?? 'single';
-          _beans.addAll((data['beans'] as List<dynamic>?)
+          _beans = (data['beans'] as List<dynamic>?)
                   ?.map((b) => {
-                        'name': b['name'].toString(),
-                        'weight': b['weight'].toString(),
+                        'beanId': b['beanId']?.toString() ?? '',
+                        'weight': b['weight']?.toString() ?? '',
+                        'name': b['name']?.toString() ?? '',
                       })
                   .toList() ??
-              []);
+              [];
           _bloomingWaterController.text =
               data['blooming']?['water']?.toString() ?? '';
           _bloomingTimeController.text =
@@ -137,9 +151,50 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
     }
   }
 
+  Future<void> _addNewBean() async {
+    String? newBeanName = await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('새 원두 추가'),
+        content: TextField(
+          decoration: InputDecoration(
+            labelText: '원두 이름',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onSubmitted: (value) => Navigator.pop(ctx, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              var controller = ctx.widget.toString().contains('TextField')
+                  ? (ctx.widget as TextField).controller?.text ?? ''
+                  : '';
+              Navigator.pop(ctx, controller);
+            },
+            child: Text('추가'),
+          ),
+        ],
+      ),
+    );
+    if (newBeanName != null && newBeanName.isNotEmpty) {
+      var docRef = await FirebaseFirestore.instance.collection('beans').add({
+        'name': newBeanName,
+        'createdAt': FieldValue.serverTimestamp(),
+        'userId': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
+      });
+      setState(() {
+        _beanOptions.add({'id': docRef.id, 'name': newBeanName});
+      });
+    }
+  }
+
   void _addBean() {
     setState(() {
-      _beans.add({'name': '', 'weight': ''});
+      _beans.add({'beanId': null, 'weight': '', 'name': ''});
     });
   }
 
@@ -149,151 +204,101 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
     });
   }
 
-  void _saveRecipe() {
-    // 유효성 검사
+  Future<void> _saveRecipe() async {
     if (_titleController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('제목을 입력하세요')),
+        SnackBar(content: Text('제목을 입력하세요')),
       );
       return;
     }
     if (widget.category == 'coffee') {
-      if (_beanType.isEmpty || !['single', 'blend'].contains(_beanType)) {
+      if (_beans.any((b) => b['beanId'] == null || b['weight'].isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('원두 타입을 선택하세요 (single/blend)')),
+          SnackBar(content: Text('모든 원두와 무게를 입력하세요')),
         );
         return;
       }
-      if (_beans.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('최소 하나의 원두를 추가하세요')),
-        );
-        return;
-      }
-      for (var bean in _beans) {
-        if (bean['name']?.isEmpty ?? true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('모든 원두의 이름을 입력하세요')),
-          );
-          return;
-        }
-        final weight = int.tryParse(bean['weight'] ?? '0');
-        if (weight == null || weight <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('모든 원두의 무게를 양수로 입력하세요')),
-          );
-          return;
-        }
-      }
-      if (_bloomingWaterController.text.isNotEmpty ||
-          _bloomingTimeController.text.isNotEmpty) {
-        final water = int.tryParse(_bloomingWaterController.text);
-        if (water == null || water <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('블루밍 물량을 양수로 입력하세요')),
-          );
-          return;
-        }
-        final time = int.tryParse(_bloomingTimeController.text);
-        if (time == null || time <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('블루밍 시간을 양수로 입력하세요')),
-          );
-          return;
-        }
-      }
-      for (var extraction in _extractions) {
-        final amount = int.tryParse(extraction['water'] ?? '0');
-        if (amount == null || amount <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('모든 추출 단계의 물량을 양수로 입력하세요')),
-          );
-          return;
-        }
-      }
-      if (_additionalWater &&
-          _additionalWaterAmountController.text.isNotEmpty) {
-        final amount = int.tryParse(_additionalWaterAmountController.text);
-        if (amount == null || amount <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('가수량을 양수로 입력하세요')),
-          );
-          return;
-        }
-      }
-    } else {
-      if (_recipeNameController.text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('요리 이름을 입력하세요')),
-        );
-        return;
-      }
-    }
-
-    // 데이터 준비
-    Map<String, dynamic> recipeData = {
-      'title': _titleController.text,
-      'category': widget.category,
-      'createdAt': widget.isEditing
-          ? FieldValue.serverTimestamp()
-          : FieldValue.serverTimestamp(),
-      'wifeRating': widget.isEditing ? null : 0.0,
-      'wifeReview': '',
-    };
-
-    if (widget.category == 'coffee') {
-      recipeData.addAll({
-        'beanType': _beanType,
-        'beans': _beans
-            .map((bean) => {
-                  'name': bean['name'],
-                  'weight': int.parse(bean['weight']!),
-                })
-            .toList(),
-        'blooming': {
-          'water': _bloomingWaterController.text.isNotEmpty
-              ? int.parse(_bloomingWaterController.text)
-              : 0,
-          'time': _bloomingTimeController.text.isNotEmpty
-              ? int.parse(_bloomingTimeController.text)
-              : 0,
-        },
-        'extractions': _extractions
-            .map((e) => {
-                  'stage': e['stage'],
-                  'water': int.parse(e['water']!),
-                })
-            .toList(),
-        'additionalWater': _additionalWater,
-        'additionalWaterAmount':
-            _additionalWater && _additionalWaterAmountController.text.isNotEmpty
-                ? int.parse(_additionalWaterAmountController.text)
+      try {
+        Map<String, dynamic> recipeData = {
+          'title': _titleController.text,
+          'category': widget.category,
+          'createdAt': FieldValue.serverTimestamp(),
+          'userId': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
+          'wifeRating': widget.isEditing ? null : 0.0,
+          'wifeReview': '',
+        };
+        if (widget.category == 'coffee') {
+          recipeData.addAll({
+            'beanType': _beanType,
+            'beans': _beans
+                .map((b) => {
+                      'beanId': b['beanId'],
+                      'weight': int.parse(b['weight'] ?? '0'),
+                    })
+                .toList(),
+            'blooming': {
+              'water': int.parse(_bloomingWaterController.text.isEmpty
+                  ? '0'
+                  : _bloomingWaterController.text),
+              'time': int.parse(_bloomingTimeController.text.isEmpty
+                  ? '0'
+                  : _bloomingTimeController.text),
+            },
+            'extractions': _extractions,
+            'additionalWater': _additionalWater,
+            'additionalWaterAmount': _additionalWater
+                ? int.parse(_additionalWaterAmountController.text.isEmpty
+                    ? '0'
+                    : _additionalWaterAmountController.text)
                 : 0,
-      });
-    } else {
-      recipeData.addAll({
-        'recipeName': _recipeNameController.text,
-        'ingredients': _ingredientsController.text,
-        'instructions': _instructionsController.text,
-      });
+          });
+        } else {
+          recipeData.addAll({
+            'recipeName': _recipeNameController.text,
+            'ingredients': _ingredientsController.text,
+            'instructions': _instructionsController.text,
+          });
+        }
+        if (widget.isEditing) {
+          await FirebaseFirestore.instance
+              .collection('recipes')
+              .doc(widget.recipeId)
+              .update(recipeData);
+        } else {
+          await FirebaseFirestore.instance
+              .collection('recipes')
+              .add(recipeData);
+        }
+        Navigator.pop(context);
+      } catch (error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('저장 실패: $error')),
+        );
+      }
     }
+  }
 
-    // 저장 또는 업데이트
-    if (widget.isEditing && widget.recipeId != null) {
-      FirebaseFirestore.instance
-          .collection('recipes')
-          .doc(widget.recipeId)
-          .update(recipeData);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('레시피가 수정되었습니다')),
-      );
-    } else {
-      FirebaseFirestore.instance.collection('recipes').add(recipeData);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('레시피가 추가되었습니다')),
-      );
-    }
-    Navigator.pop(context);
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    String? hintText,
+    TextInputType keyboardType = TextInputType.text,
+    Function(String)? onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hintText ?? '입력하세요',
+          helperText: keyboardType == TextInputType.number ? '양수만 입력하세요' : null,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        keyboardType: keyboardType,
+        onChanged: onChanged,
+      ),
+    );
   }
 
   @override
@@ -301,70 +306,110 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.isEditing
-              ? '${widget.category == 'coffee' ? '커피' : '요리'} 레시피 수정'
-              : '${widget.category == 'coffee' ? '커피' : '요리'} 레시피 추가'),
+          title: Text(
+            widget.isEditing ? '레시피 수정' : '레시피 추가',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: Colors.brown[700],
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0),
+          padding: EdgeInsets.fromLTRB(
+            16.0,
+            16.0,
+            16.0,
+            16.0 + MediaQuery.of(context).padding.bottom,
+          ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildTextField(
                 controller: _titleController,
-                label: '제목',
-                hintText: '레시피 제목을 입력하세요 (예: 에티오피아 커피)',
+                label: '레시피 제목',
               ),
+              const SizedBox(height: 16),
               if (widget.category == 'coffee') ...[
-                DropdownButton<String>(
-                  value: _beanType,
-                  onChanged: (value) {
-                    setState(() {
-                      _beanType = value!;
-                    });
+                Text('원두', style: Theme.of(context).textTheme.titleMedium),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: _beans.length,
+                  itemBuilder: (context, index) {
+                    var bean = _beans[index];
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: bean['beanId']?.isEmpty ?? true
+                                ? null
+                                : bean['beanId'],
+                            hint: Text('원두 선택'),
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            items: _beanOptions.map((option) {
+                              return DropdownMenuItem<String>(
+                                value: option['id'] as String,
+                                child: Text(option['name'] as String),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _beans[index]['beanId'] = value;
+                                _beans[index]['name'] = _beanOptions.firstWhere(
+                                        (opt) => opt['id'] == value)['name']
+                                    as String;
+                              });
+                            },
+                            menuMaxHeight: 288,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller:
+                                TextEditingController(text: bean['weight']),
+                            decoration: InputDecoration(
+                              labelText: '무게 (g)',
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              setState(() {
+                                _beans[index]['weight'] = value;
+                              });
+                            },
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.remove_circle, color: Colors.red),
+                          onPressed: () {
+                            setState(() {
+                              _beans.removeAt(index);
+                            });
+                          },
+                        ),
+                      ],
+                    );
                   },
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'single', child: Text('Single Origin')),
-                    DropdownMenuItem(value: 'blend', child: Text('Blend')),
-                  ],
                 ),
-                ..._beans.asMap().entries.map((entry) {
-                  int index = entry.key;
-                  var bean = entry.value;
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: TextEditingController(text: bean['name']),
-                          label: '원두 이름',
-                          onChanged: (value) => bean['name'] = value,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildTextField(
-                          controller:
-                              TextEditingController(text: bean['weight']),
-                          label: '무게 (g)',
-                          keyboardType: TextInputType.number,
-                          onChanged: (value) => bean['weight'] = value,
-                        ),
-                      ),
-                      IconButton(
-                        icon:
-                            const Icon(Icons.remove_circle, color: Colors.red),
-                        onPressed: () {
-                          setState(() {
-                            _beans.removeAt(index);
-                          });
-                        },
-                      ),
-                    ],
-                  );
-                }).toList(),
-                ElevatedButton(
-                  onPressed: _addBean,
-                  child: const Text('원두 추가'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    ElevatedButton(
+                      onPressed: _addBean,
+                      child: Text('원두 추가'),
+                    ),
+                    ElevatedButton(
+                      onPressed: _addNewBean,
+                      child: Text('새 원두 추가'),
+                    ),
+                  ],
                 ),
                 _buildTextField(
                   controller: _bloomingWaterController,
@@ -400,8 +445,7 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
                         ),
                       ),
                       IconButton(
-                        icon:
-                            const Icon(Icons.remove_circle, color: Colors.red),
+                        icon: Icon(Icons.remove_circle, color: Colors.red),
                         onPressed: () {
                           setState(() {
                             _extractions.removeAt(index);
@@ -444,10 +488,6 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
                   label: '조리법',
                 ),
               ],
-              // ElevatedButton(
-              //   onPressed: _saveRecipe,
-              //   child: Text(widget.isEditing ? '수정 저장' : '레시피 추가'),
-              // ),
             ],
           ),
         ),
@@ -458,29 +498,6 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
           tooltip: '레시피 저장',
           child: const Icon(Icons.save),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    String? hintText,
-    TextInputType keyboardType = TextInputType.text,
-    Function(String)? onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hintText ?? '입력하세요',
-          helperText: keyboardType == TextInputType.number ? '양수만 입력하세요' : null,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        keyboardType: keyboardType,
-        onChanged: onChanged,
       ),
     );
   }

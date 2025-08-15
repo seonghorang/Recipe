@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'screens/recipe_list_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'screens/recipe_detail_screen.dart';
-import 'screens/statistics_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'screens/recipe_detail_screen.dart';
+import 'screens/recipe_setup_screen.dart';
+import 'screens/recipe_list_screen.dart';
+import 'screens/statistics_screen.dart';
+import 'firebase_options.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized(); // ✅ Firebase 초기화 전에 호출해야 함
-  await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform); // ✅ Firebase 초기화
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    await FirebaseAuth.instance.signInAnonymously();
+    print('Signed in user: ${FirebaseAuth.instance.currentUser?.uid}');
+  } catch (e) {
+    print('Anonymous sign-in failed: $e');
+  }
+
   runApp(const MyApp());
 }
 
@@ -26,6 +34,24 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.orange,
       ),
       home: const MainScreen(),
+      routes: {
+        '/recipe_detail': (context) => RecipeDetailScreen(
+              recipeId: (ModalRoute.of(context)!.settings.arguments
+                  as Map)['recipeId'],
+              category: (ModalRoute.of(context)!.settings.arguments
+                  as Map)['category'],
+            ),
+        '/recipe_setup': (context) => RecipeSetupScreen(
+              recipeId: (ModalRoute.of(context)!.settings.arguments
+                  as Map)['recipeId'],
+              category: (ModalRoute.of(context)!.settings.arguments
+                  as Map)['category'],
+              isEditing: (ModalRoute.of(context)!.settings.arguments
+                  as Map)['isEditing'],
+            ),
+        '/recipe_list': (context) => const RecipeListScreen(),
+        '/statistics': (context) => const StatisticsScreen(),
+      },
     );
   }
 }
