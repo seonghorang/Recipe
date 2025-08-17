@@ -17,8 +17,10 @@ void main() async {
     print('Signed in user: ${FirebaseAuth.instance.currentUser?.uid}');
   } catch (e) {
     print('Anonymous sign-in failed: $e');
+    if (e.toString().contains('GoogleApiManager')) {
+      print('googleApoManager error datected: $e');
+    }
   }
-
   runApp(const MyApp());
 }
 
@@ -35,20 +37,21 @@ class MyApp extends StatelessWidget {
       ),
       home: const MainScreen(),
       routes: {
-        '/recipe_detail': (context) => RecipeDetailScreen(
-              recipeId: (ModalRoute.of(context)!.settings.arguments
-                  as Map)['recipeId'],
-              category: (ModalRoute.of(context)!.settings.arguments
-                  as Map)['category'],
-            ),
-        '/recipe_setup': (context) => RecipeSetupScreen(
-              recipeId: (ModalRoute.of(context)!.settings.arguments
-                  as Map)['recipeId'],
-              category: (ModalRoute.of(context)!.settings.arguments
-                  as Map)['category'],
-              isEditing: (ModalRoute.of(context)!.settings.arguments
-                  as Map)['isEditing'],
-            ),
+        '/recipe_detail': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments as Map;
+          return RecipeDetailScreen(
+            recipeId: args['recipeId'] as String,
+            category: args['category'] as String,
+            );
+        },
+        '/recipe_setup': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments as Map;
+          return RecipeSetupScreen(
+            category: args['category'] as String,
+            recipeId: args['recipeId'] as String?,
+            isEditing: args['isEditing'] as bool,
+            );
+        },
         '/recipe_list': (context) => const RecipeListScreen(),
         '/statistics': (context) => const StatisticsScreen(),
       },
@@ -107,6 +110,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<QueryDocumentSnapshot> recipes = [];
   bool isCoffeeSelected = true;
+  String? userId;
+
+  @override
+  void initState() {
+    super.initState();
+    userId = FirebaseAuth.instance.currentUser?.uid;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +146,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       isCoffeeSelected = true;
                     });
                   },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isCoffeeSelected ? Colors.brown[700] : Colors.grey[300],
+                    foregroundColor: isCoffeeSelected ? Colors.white : Colors.black,
+                  ),
                   child: const Text('☕ 커피 레시피'),
                 ),
                 ElevatedButton(
@@ -144,6 +158,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       isCoffeeSelected = false;
                     });
                   },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isCoffeeSelected ? Colors.grey[300] : Colors.brown[700],
+                    foregroundColor: isCoffeeSelected ? Colors.black : Colors.white,
+                  ),
                   child: const Text('🍽 요리 레시피'),
                 ),
               ],
@@ -177,34 +195,44 @@ class _HomeScreenState extends State<HomeScreen> {
                       var recipe = recipes[index];
                       var recipeData = recipe.data() as Map<String, dynamic>?;
                       return ListTile(
-                        title: Text(
-                          // 커피 레시피일 경우 beans 필드를 표시
-                          isCoffeeSelected
-                              ? (recipeData != null &&
-                                      recipeData.containsKey('beans')
-                                  ? (recipeData['beans'] as List<dynamic>)
-                                          ?.map((bean) => bean['name'])
-                                          .join(', ') ??
-                                      '원두 없음'
-                                  : '원두 없음') // beans 필드가 없을 경우
-                              : (recipeData != null &&
-                                      recipeData.containsKey('recipeName')
-                                  ? recipeData['recipeName'] // 요리 이름으로 설정
-                                  : '요리 이름 없음'), // 요리 이름이 없을 경우
-                        ),
+                        title: isCoffeeSelected
+                            ? FutureBuilder<QuerySnapshot>(
+                                future: FirebaseFirestore.instance.collection
+                                ('beans').get(),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData) return const Text('로딩 중...');
+                                  var beansMap = {for (var doc in snapshot.data!.docs) doc.id: doc['name']};
+                                  var beans = recipeData?['beans'] as List<dynamic>? ?? [];
+                                  return Text(
+                                    beans.isNotEmpty
+                                        ? beans
+                                            .map((bean) =>
+                                                '${bean['beanId'] != null ? beansMap
+                                                [bean['beanId']] ?? bean['name'] ?? '알 수 없음' : bean['name'] ?? '알 수 없음'}')
+                                            .join(', ')
+                                        : '원두 없음',
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
+                            )
+                          : Text(recipeData?['recipeName'] ?? '요리 이름 없음'), // 요리 이름이 없을 경우
                         subtitle: Text(
-                          recipe['createdAt'] != null
+                          recipeData != null && recipeData['createdAt'] != null
                               ? DateFormat('yyyy년 MM월 dd일')
-                                  .format(recipe['createdAt'].toDate())
+                                  .format((recipeData['createdAt'] as Timestamp).toDate())
                               : '날짜 없음',
-                        ), // 레시피 제목
+                        ),
+                        trailing: Text(
+                          '평점: ${recipeData?['wifeRating']?.toStringAsFixed(1) ?? '0.0'}',
+                        ),
                         onTap: () {
-                          Navigator.push(
+                          Navigator.pushNamed(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  RecipeDetailScreen(recipeId: recipe.id),
-                            ),
+                            '/recipe_detail',
+                            arguments: {
+                              'recipeId': recipe.id,
+                              'category': isCoffeeSelected ? 'coffee' : 'cooking',
+                            },
                           );
                         },
                       );
@@ -215,6 +243,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.pushNamed(
+            context,
+            '/recipe_setup',
+            arguments: {
+              'category': isCoffeeSelected ? 'coffee' : 'cooking',
+              'isEditing': false,
+            },
+          );
+        },
+      backgroundColor: Colors.brown[700],
+      foregroundColor: Colors.white,
+      tooltip: '레시피 추가',
+      child: const Icon(Icons.add),
       ),
     );
   }
