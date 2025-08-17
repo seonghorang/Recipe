@@ -59,5 +59,4 @@ class DefaultFirebaseOptions {
     projectId: 'recipe-manager-d8339',
     storageBucket: 'recipe-manager-d8339.firebasestorage.app',
   );
-
 }

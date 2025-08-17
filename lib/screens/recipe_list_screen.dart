@@ -41,8 +41,10 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                     });
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isCoffeeSelected ? Colors.brown[700] : Colors.grey[300],
-                    foregroundColor: isCoffeeSelected ? Colors.white : Colors.black,
+                    backgroundColor:
+                        isCoffeeSelected ? Colors.brown[700] : Colors.grey[300],
+                    foregroundColor:
+                        isCoffeeSelected ? Colors.white : Colors.black,
                   ),
                   child: const Text('커피'),
                 ),
@@ -53,8 +55,10 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                     });
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isCoffeeSelected ? Colors.grey[300] : Colors.brown[700],
-                    foregroundColor: isCoffeeSelected ? Colors.black : Colors.white,
+                    backgroundColor:
+                        isCoffeeSelected ? Colors.grey[300] : Colors.brown[700],
+                    foregroundColor:
+                        isCoffeeSelected ? Colors.black : Colors.white,
                   ),
                   child: const Text('요리'),
                 ),
@@ -65,7 +69,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('recipes')
-                    .where('category', isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
+                    .where('category',
+                        isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
                     .orderBy('createdAt', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
@@ -84,17 +89,24 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                       return ListTile(
                         title: isCoffeeSelected
                             ? FutureBuilder<QuerySnapshot>(
-                                future: FirebaseFirestore.instance.collection('beans').get(),
+                                future: FirebaseFirestore.instance
+                                    .collection('beans')
+                                    .get(),
                                 builder: (context, snapshot) {
-                                  if (!snapshot.hasData) return const Text('로딩 중...');
-                                  var beansMap = {for (var doc in snapshot.data!.docs) doc.id:
-                                  doc['name']};
-                                  var beans = recipeData['beans'] as List<dynamic>? ?? [];
+                                  if (!snapshot.hasData)
+                                    return const Text('로딩 중...');
+                                  var beansMap = {
+                                    for (var doc in snapshot.data!.docs)
+                                      doc.id: doc['name']
+                                  };
+                                  var beans =
+                                      recipeData['beans'] as List<dynamic>? ??
+                                          [];
                                   return Text(
                                     beans.isNotEmpty
                                         ? beans
                                             .map((bean) =>
-                                                 '${bean['beanId'] != null ? beansMap[bean['beanId']] ?? bean['name'] ?? '알 수 없음' : bean['name'] ?? '알 수 없음'}')
+                                                '${bean['beanId'] != null ? beansMap[bean['beanId']] ?? bean['name'] ?? '알 수 없음' : bean['name'] ?? '알 수 없음'}')
                                             .join(', ')
                                         : '원두 없음',
                                     overflow: TextOverflow.ellipsis,
@@ -104,8 +116,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                             : Text(recipeData['recipeName'] ?? '요리 이름 없음'),
                         subtitle: Text(
                           recipeData['createdAt'] != null
-                              ? DateFormat('yyyy-MM-dd')
-                                  .format((recipeData['createdAt'] as Timestamp).toDate())
+                              ? DateFormat('yyyy-MM-dd').format(
+                                  (recipeData['createdAt'] as Timestamp)
+                                      .toDate())
                               : '날짜 없음',
                         ),
                         trailing: Text(
@@ -117,7 +130,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                             '/recipe_detail',
                             arguments: {
                               'recipeId': recipe.id,
-                              'category': isCoffeeSelected ? 'coffee' : 'cooking',
+                              'category':
+                                  isCoffeeSelected ? 'coffee' : 'cooking',
                             },
                           );
                         },
