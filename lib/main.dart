@@ -8,20 +8,12 @@ import 'screens/recipe_detail_screen.dart';
 import 'screens/recipe_setup_screen.dart';
 import 'screens/recipe_list_screen.dart';
 import 'screens/statistics_screen.dart';
+import 'screens/login_screen.dart';
 import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  try {
-    await FirebaseAuth.instance.signInAnonymously();
-    print('Signed in user: ${FirebaseAuth.instance.currentUser?.uid}');
-  } catch (e) {
-    print('Anonymous sign-in failed: $e');
-    if (e.toString().contains('GoogleApiManager')) {
-      print('googleApoManager error datected: $e');
-    }
-  }
   runApp(const MyApp());
 }
 
@@ -36,7 +28,20 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.orange,
       ),
-      home: const MainScreen(),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasData) {
+            print('Signed in user: ${snapshot.data?.uid}');
+            return const MainScreen();
+          }
+          print('No user signed in, showing LoginScreen');
+          return const LoginScreen();
+        },
+      ),
       routes: {
         '/recipe_detail': (context) {
           final args = ModalRoute.of(context)!.settings.arguments as Map;
@@ -55,6 +60,7 @@ class MyApp extends StatelessWidget {
         },
         '/recipe_list': (context) => const RecipeListScreen(),
         '/statistics': (context) => const StatisticsScreen(),
+        '/login': (contexet) => const LoginScreen(),
       },
     );
   }
@@ -164,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              '원두별 별점 통계',
+              '원두별 평균 별점',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
@@ -225,28 +231,56 @@ return FutureBuilder<QuerySnapshot>(
                         return const Center(child: Text('사용된 원두가 없습니다.'));
                       }
 
+                      List<Map<String, dynamic>> sortedBeans = beanRatingCount.keys.map((beanId)
+                      {
+                        double avgRating = beanRatingCount[beanId]! > 0
+                        ? beanRatingSum[beanId]! / beanRatingCount[beanId]!
+                        : 0.0;
+                        return {
+                          'beanId': beanId,
+                          'avgRating': avgRating,
+                          'usageCount': beanUsage[beanId] ?? 0,
+                        };
+                      }).toList();
+                      sortedBeans.sort((a,b) {
+                        if (b['avgRating'] == a['avgRating']) {
+                          return b['usageCount'].compareTo(a['usageCount']);
+                        }
+                        return b['avgRating'].compareTo(a['avgRating']);
+                      });
+
                       // 차트 데이터 준비
                       List<BarChartGroupData> barGroups = [];
                       List<String> beanLabels = [];
                       int index = 0;
-                      beanUsage.forEach((beanId, count) {
+                      for (var entry in sortedBeans) {
                         if (index < 5) { // 최대 5개 원두 표시
-                          beanLabels.add(beanNames[beanId] ?? beanId);
+                          String fullName = beanNames[entry['beanId']] ?? entry['beanId'];
+                          String shortName = fullName.length > 5
+                          ? '${fullName.substring(0,5)}...'
+                          : fullName;
+                          beanLabels.add(shortName);
                           barGroups.add(
                             BarChartGroupData(
                               x: index,
                               barRods: [
                                 BarChartRodData(
-                                  toY: count.toDouble(),
+                                  toY: entry['avgRating'],
                                   color: Colors.brown[700],
                                   width: 20,
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                                  backDrawRodData: BackgroundBarChartRodData(
+                                    show: true,
+                                    toY: 5.0,
+                                    color: Colors.brown[100],
+                                  ),
                                 ),
                               ],
                             ),
                           );
                           index++;
                         }
-                      });
+                      }
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,6 +290,8 @@ return FutureBuilder<QuerySnapshot>(
                             child: BarChart(
                               BarChartData(
                                 alignment: BarChartAlignment.spaceAround,
+                                maxY: 5.0,
+                                minY: 0.0,
                                 titlesData: FlTitlesData(
                                   show: true,
                                   bottomTitles: AxisTitles(
@@ -266,15 +302,23 @@ return FutureBuilder<QuerySnapshot>(
                                         return idx < beanLabels.length
                                             ? Text(
                                                 beanLabels[idx],
-                                                style: const TextStyle(fontSize: 12),
+                                                style: const TextStyle(fontSize: 11),
                                                 overflow: TextOverflow.ellipsis,
                                               )
                                             : const Text('');
                                       },
                                     ),
                                   ),
-                                  leftTitles: const AxisTitles(
-                                    sideTitles: SideTitles(showTitles: true),
+                                  leftTitles: AxisTitles(
+                                    sideTitles: SideTitles(showTitles: true,
+                                    reservedSize: 40,
+                                    getTitlesWidget: (value, meta) {
+                                      return Text(
+                                        value.toStringAsFixed(1),
+                                        style: const TextStyle(fontSize: 12),
+                                      );
+                                    },
+                                    ),
                                   ),
                                   topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                                   rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -286,73 +330,24 @@ return FutureBuilder<QuerySnapshot>(
                           ),
                           const SizedBox(height: 16),
                           const Text(
-                            '원두별 평균 평점',
+                            '원두별 평균 별점 (높은 순)',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                           Expanded(
-                            child: StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('recipes')
-                                  .where('category', isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
-                                  .where('userId', isEqualTo: userId)
-                                  .orderBy('createdAt', descending: true)
-                                  .limit(5)
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const Center(child: CircularProgressIndicator());
-                                }
-                                if (snapshot.hasError) {
-                                  return Center(child: Text('오류 발생: ${snapshot.error}'));
-                                }
-                                final recipes = snapshot.data?.docs ?? [];
-                                return ListView.builder(
-                                  itemCount: recipes.length,
-                                  itemBuilder: (context, index) {
-                                    var recipe = recipes[index];
-                                    var recipeData = recipe.data() as Map<String, dynamic>?;
-                                    return ListTile(
-                                      title: isCoffeeSelected
-                                          ? FutureBuilder<QuerySnapshot>(
-                                              future: FirebaseFirestore.instance.collection('beans').get(),
-                                              builder: (context, snapshot) {
-                                                if (!snapshot.hasData) return const Text('로딩 중...');
-                                                var beansMap = {
-                                                  for (var doc in snapshot.data!.docs) doc.id: doc['name']
-                                                };
-                                                var beans = recipeData?['beans'] as List<dynamic>? ?? [];
-                                                return Text(
-                                                  beans.isNotEmpty
-                                                      ? beans
-                                                          .map((bean) =>
-                                                              '${bean['beanId'] != null ? beansMap[bean['beanId']] ?? bean['name'] ?? '알 수 없음' : bean['name'] ?? '알 수 없음'}')
-                                                          .join(', ')
-                                                      : '원두 없음',
-                                                  overflow: TextOverflow.ellipsis,
-                                                );
-                                              },
-                                            )
-                                          : Text(recipeData?['recipeName'] ?? '요리 이름 없음'),
-                                      subtitle: Text(
-                                        recipeData != null && recipeData['createdAt'] != null
-                                            ? DateFormat('yyyy년 MM월 dd일').format(
-                                                (recipeData['createdAt'] as Timestamp).toDate())
-                                            : '날짜 없음',
-                                      ),
-                                      trailing: Text(
-                                        '평점: ${recipeData?['wifeRating']?.toStringAsFixed(1) ?? '0.0'}',
-                                      ),
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) => RecipeDetailScreen(
-                                              recipeId: recipe.id,
-                                              category: isCoffeeSelected ? 'coffee' : 'cooking', // category 추가
-                                            ),
-                                          ),
-                                        );
-                                      },
+                            child: ListView.builder(
+                              itemCount: sortedBeans.length,
+                              itemBuilder: (context, index) {
+                                var entry = sortedBeans[index];
+                                var beanId = entry['beanId'];
+                                return ListTile(
+                                  title: Text(beanNames[beanId] ?? beanId),
+                                  subtitle: Text('사용 횟수: ${entry['usageCount']}'),
+                                  trailing: Text('평균 별점: ${entry['avgRating'].toStringAsFixed(1)}'),
+                                  onTap: (){
+                                    Navigator.pushNamed(
+                                      context,
+                                      '/recipe_list',
+                                      arguments: {'beanId': beanId},
                                     );
                                   },
                                 );
@@ -360,30 +355,14 @@ return FutureBuilder<QuerySnapshot>(
                             ),
                           ),
                         ],
-                      );
-                    },
-                  );
-                },
+                                    );
+                                  },
+                                );
+                              },
               ),
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(
-            context,
-            '/recipe_setup',
-            arguments: {
-              'category': isCoffeeSelected ? 'coffee' : 'cooking',
-              'isEditing': false,
-            },
-          );
-        },
-        backgroundColor: Colors.brown[700],
-        foregroundColor: Colors.white,
-        tooltip: '레시피 추가',
-        child: const Icon(Icons.add),
       ),
     );
   }

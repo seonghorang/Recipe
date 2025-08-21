@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 // import 'recipe_detail_screen.dart';
 // import 'recipe_setup_screen.dart';
@@ -16,6 +17,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final String? beanId = args?['beanId'];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -69,8 +73,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('recipes')
-                    .where('category',
-                        isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
+                    .where('category', isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
+                    .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
                     .orderBy('createdAt', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
@@ -80,7 +84,12 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     return const Center(child: Text('레시피가 없습니다.'));
                   }
-                  final recipes = snapshot.data!.docs;
+                  final recipes = snapshot.data!.docs.where((recipe) {
+                    if (beanId == null || !isCoffeeSelected) return true;
+                    var data = recipe.data() as Map<String, dynamic>;
+                    var beans = data['beans'] as List<dynamic>? ?? [];
+                    return beans.any((bean) => bean['beanId'] == beanId || bean['name'] == beanId);
+                  }).toList();
                   return ListView.builder(
                     itemCount: recipes.length,
                     itemBuilder: (context, index) {

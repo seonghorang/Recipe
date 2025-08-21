@@ -46,10 +46,13 @@ dependencies:
   flutter_native_splash: ^2.3.10
   firebase_messaging: ^15.0.3
   flutter_plugin_android_lifecycle: ^2.0.21
+  flutter_sound: ^9.28.0
+  firebase_storage: ^12.1.3
   intl: ^0.19.0
   google_fonts: ^6.1.0
   fl_chart: ^0.69.0
   firebase_auth: ^5.0.0
+  permission_handler: ^12.0.1
 
 flutter_native_splash:
   android: true
