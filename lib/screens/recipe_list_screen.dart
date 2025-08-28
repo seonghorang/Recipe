@@ -17,7 +17,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final String? beanId = args?['beanId'];
 
     return Scaffold(
@@ -73,8 +74,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('recipes')
-                    .where('category', isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
-                    .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                    .where('category',
+                        isEqualTo: isCoffeeSelected ? 'coffee' : 'cooking')
+                    // .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
                     .orderBy('createdAt', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
@@ -88,7 +90,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                     if (beanId == null || !isCoffeeSelected) return true;
                     var data = recipe.data() as Map<String, dynamic>;
                     var beans = data['beans'] as List<dynamic>? ?? [];
-                    return beans.any((bean) => bean['beanId'] == beanId || bean['name'] == beanId);
+                    return beans.any((bean) =>
+                        bean['beanId'] == beanId || bean['name'] == beanId);
                   }).toList();
                   return ListView.builder(
                     itemCount: recipes.length,

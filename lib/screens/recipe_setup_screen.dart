@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'select_recipe_screen.dart';
 
 class RecipeSetupScreen extends StatefulWidget {
-  final String? recipeId; // 편집용
-  final bool isEditing; // 추가/편집 구분 플래그
-  final String category;
+  final String category; // ✅ 커피 or 요리 구분
+  final String? recipeId; // 수정 모드일 때 사용
+  final bool isEditing; // 수정 모드 여부
+
   const RecipeSetupScreen({
     super.key,
     required this.category,
     this.recipeId,
-    this.isEditing = false,
+    required this.isEditing,
   });
 
   @override
@@ -18,144 +20,178 @@ class RecipeSetupScreen extends StatefulWidget {
 }
 
 class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
-  final _titleController = TextEditingController();
+  final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _recipeNameController = TextEditingController();
+  final TextEditingController _ingredientsController = TextEditingController();
+  final TextEditingController _instructionsController = TextEditingController();
+
+  // 커피 레시피 관련 필드
   String _beanType = 'single';
-  List<Map<String, dynamic>> _beans =
-      []; // [{beanId: String, weight: String, name: String}]
-  List<Map<String, dynamic>> _beanOptions = []; // [{id: String, name: String}]
-  final _bloomingWaterController = TextEditingController();
-  final _bloomingTimeController = TextEditingController();
-  final List<Map<String, String>> _extractions = [];
+  // List<Map<String, dynamic>> _beans: 레시피에 사용될 원두들을 동적으로 관리하는 리스트
+  // 각 원소는 { 'beanId': selectedId, 'name': selectedName, 'weight': inputWeight } 형태
+  List<Map<String, dynamic>> _beans = [];
+
+  final TextEditingController _bloomingWaterController =
+      TextEditingController();
+  final TextEditingController _bloomingTimeController = TextEditingController();
+  List<Map<String, dynamic>> _extractions = []; // 아직 사용 안 함
   bool _additionalWater = false;
-  final _additionalWaterAmountController = TextEditingController();
-  final _recipeNameController = TextEditingController();
-  final _ingredientsController = TextEditingController();
-  final _instructionsController = TextEditingController();
-  Map<String, dynamic>? _recentRecipe;
+  final TextEditingController _additionalWaterAmountController =
+      TextEditingController();
+
+  // Firebase /beans 컬렉션에서 가져올 마스터 원두 목록
+  // {id: 'docId', name: '원두명'} 형태로 저장
+  List<Map<String, String>> _availableBeans = [];
 
   @override
   void initState() {
     super.initState();
-    _loadBeans();
-    _loadRecentRecipe();
+    _fetchAvailableBeans(); // 사용 가능한 원두 목록 불러오기
+
+    print("[InitState] RecipeSetupScreen initState 시작."); // <<< 추가
+    print("[InitState] widget.isEditing: ${widget.isEditing}"); // <<< 추가
+    print("[InitState] widget.recipeId: ${widget.recipeId}"); // <<< 추가
+
     if (widget.isEditing && widget.recipeId != null) {
-      _loadRecipeData();
+      print("[InitState] 새 레시피 추가 모드 감지, _loadMostRecentRecipe 호출 시도.");
+      _loadRecipeData(widget.recipeId!, isForEditing: true); // 기존 레시피 데이터 로드
+    } else if (!widget.isEditing && widget.recipeId != null) {
+      _loadMostRecentRecipe();
+    }
+    // 새로운 레시피 추가 시, 최소 하나의 원두 입력 칸을 기본으로 제공 (이 로직은 그대로 유지)
+    if (widget.category == "coffee" && _beans.isEmpty) {
+      if (_beans.isEmpty) {
+        // 이전 로드에서 _beans가 채워지지 않았다면
+        _beans.add({'beanId': null, 'weight': '', 'name': ''});
+      }
     }
   }
 
-  Future<void> _loadBeans() async {
-    var snapshot = await FirebaseFirestore.instance.collection('beans').get();
-    setState(() {
-      _beanOptions = snapshot.docs
-          .map((doc) => {'id': doc.id, 'name': doc['name']})
-          .toList();
-      print('Beans loaded: $_beanOptions'); // 디버깅 로그
-    });
+  Future<void> _loadMostRecentRecipe() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      print("[LoadRecent] 사용자 로그인 안됨. 최근 레시피 불러오기 건너뛰기.");
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요하여 최근 레시피를 불러올 수 없습니다.')));
+      return;
+    }
+    print("[LoadRecent] 현재 로그인 사용자 UID: ${currentUser.uid}");
+    print("[LoadRecent] 현재 레시피 카테고리: ${widget.category}");
+
+    try {
+      QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('recipes')
+          .where('userId', isEqualTo: currentUser.uid)
+          .where('category', isEqualTo: widget.category)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      print("[LoadRecent] Firestore 쿼리 결과: ${snapshot.docs.length}개 문서.");
+
+      if (snapshot.docs.isNotEmpty) {
+        final mostRecentRecipe = snapshot.docs.first;
+        print("[LoadRecent] 가장 최근 레시피 ID: ${mostRecentRecipe.id}");
+        print(
+            "[LoadRecent] 가장 최근 레시피 데이터: ${mostRecentRecipe.data()}"); // <<< 이 로그가 가장 중요!
+
+        _loadRecipeData(mostRecentRecipe.id,
+            isForEditing: false); // 불러오기 로직 재활용
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('최근 레시피를 불러왔습니다.')));
+      } else {
+        print("[LoadRecent] 쿼리 조건에 맞는 최근 레시피가 없습니다.");
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('최근 레시피가 없습니다. 새롭게 작성해주세요.')));
+        // ... (최소 원두 입력칸 제공 로직) ...
+      }
+    } catch (e) {
+      print("[LoadRecent] Error loading most recent recipe: $e"); // 에러 메시지 확인
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('최근 레시피 로드 실패: ${e.toString()}')));
+      if (widget.category == "coffee" && _beans.isEmpty) {
+        setState(() {
+          // 오류 발생 시에도 최소 원두 입력칸은 제공
+          _beans.add({'beanId': null, 'weight': '', 'name': ''});
+        });
+      }
+    }
   }
 
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _bloomingWaterController.dispose();
-    _bloomingTimeController.dispose();
-    _additionalWaterAmountController.dispose();
-    _recipeNameController.dispose();
-    _ingredientsController.dispose();
-    _instructionsController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadRecentRecipe() async {
-    if (widget.isEditing) return;
-    final snapshot = await FirebaseFirestore.instance
-        .collection('recipes')
-        .where('category', isEqualTo: widget.category)
-        .orderBy('createdAt', descending: true)
-        .limit(1)
-        .get();
-    if (snapshot.docs.isNotEmpty) {
+  // 사용 가능한 원두 목록을 Firestore에서 가져오는 함수
+  Future<void> _fetchAvailableBeans() async {
+    try {
+      final QuerySnapshot snapshot =
+          await FirebaseFirestore.instance.collection('beans').get();
       setState(() {
-        _recentRecipe = snapshot.docs.first.data();
-        if (widget.category == 'coffee') {
-          _beanType = _recentRecipe!['beanType'] ?? 'single';
-          _beans = (_recentRecipe!['beans'] as List<dynamic>?)
-                  ?.map((b) => {
-                        'beanId': b['beanId']?.toString() ?? '',
-                        'weight': b['weight']?.toString() ?? '',
-                        'name': b['name']?.toString() ?? '',
-                      })
-                  .toList() ??
-              [];
-          _bloomingWaterController.text =
-              _recentRecipe!['blooming']?['water']?.toString() ?? '';
-          _bloomingTimeController.text =
-              _recentRecipe!['blooming']?['time']?.toString() ?? '';
-          _extractions.addAll((_recentRecipe!['extractions'] as List<dynamic>?)
-                  ?.map((e) => {
-                        'stage': e['stage'].toString(),
-                        'water': e['water'].toString(),
-                      })
-                  .toList() ??
-              []);
-          _additionalWater = _recentRecipe!['additionalWater'] ?? false;
-          _additionalWaterAmountController.text =
-              _recentRecipe!['additionalWaterAmount']?.toString() ?? '';
-        } else {
-          _recipeNameController.text = _recentRecipe!['recipeName'] ?? '';
-          _ingredientsController.text = _recentRecipe!['ingredients'] ?? '';
-          _instructionsController.text = _recentRecipe!['instructions'] ?? '';
-        }
+        _availableBeans = snapshot.docs
+            .map((doc) => {
+                  'id': doc.id,
+                  'name': doc['name'] as String? ?? doc.id, // 이름 없으면 ID 사용
+                })
+            .toList();
+        // 원두 추가 시 드롭다운의 초기값은 첫 번째 원두가 되도록 할 수 있습니다.
+        // 또는 그냥 null로 두어 사용자가 명시적으로 선택하게 할 수도 있습니다.
       });
+    } catch (e) {
+      print("Error fetching available beans: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('원두 목록 로드 실패: ${e.toString()}')));
     }
   }
 
-  Future<void> _loadRecipeData() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('recipes')
-        .doc(widget.recipeId)
-        .get();
-    if (doc.exists) {
-      final data = doc.data()!;
-      setState(() {
-        _titleController.text = data['title'] ?? '';
-        if (data['category'] == 'coffee') {
-          _beanType = data['beanType'] ?? 'single';
-          _beans = (data['beans'] as List<dynamic>?)
-                  ?.map((b) => {
-                        'beanId': b['beanId']?.toString() ?? '',
-                        'weight': b['weight']?.toString() ?? '',
-                        'name': b['name']?.toString() ?? '',
-                      })
-                  .toList() ??
-              [];
-          _bloomingWaterController.text =
-              data['blooming']?['water']?.toString() ?? '';
-          _bloomingTimeController.text =
-              data['blooming']?['time']?.toString() ?? '';
-          _extractions.addAll((data['extractions'] as List<dynamic>?)
-                  ?.map((e) => {
-                        'stage': e['stage'].toString(),
-                        'water': e['water'].toString(),
-                      })
-                  .toList() ??
-              []);
-          _additionalWater = data['additionalWater'] ?? false;
-          _additionalWaterAmountController.text =
-              data['additionalWaterAmount']?.toString() ?? '';
-        } else {
-          _recipeNameController.text = data['recipeName'] ?? '';
-          _ingredientsController.text = data['ingredients'] ?? '';
-          _instructionsController.text = data['instructions'] ?? '';
-        }
-      });
+  // 기존 레시피 데이터를 로드하는 함수 (수정 모드일 때)
+  Future<void> _loadRecipeData(String recipeIdToLoad,
+      {required bool isForEditing}) async {
+    try {
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('recipes')
+          .doc(recipeIdToLoad)
+          .get();
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        final data = docSnapshot.data()!;
+
+        setState(() {
+          _dateController.text = data['title'] ?? '';
+
+          if (widget.category == "coffee") {
+            _beanType = data['beanType'] ?? 'single';
+            _bloomingWaterController.text =
+                (data['blooming']?['water'] ?? 0).toString();
+            _bloomingTimeController.text =
+                (data['blooming']?['time'] ?? 0).toString();
+            _additionalWater = data['additionalWater'] ?? false;
+            _additionalWaterAmountController.text =
+                (data['additionalWaterAmount'] ?? 0).toString();
+
+            // 기존 beans 데이터 로드
+            if (data.containsKey('beans') && data['beans'] is List) {
+              _beans = List<Map<String, dynamic>>.from(data['beans']);
+            } else {
+              _beans = [];
+            }
+          } else {
+            _recipeNameController.text = data['recipeName'] ?? '';
+            _ingredientsController.text = data['ingredients'] ?? '';
+            _instructionsController.text = data['instructions'] ?? '';
+          }
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('레시피 데이터를 불러왔습니다.')));
+      }
+    } catch (e) {
+      print("Error loading recipe data: $e");
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('레시피 로드 실패: ${e.toString()}')));
     }
   }
 
+  // 새 원두 종류를 Firestore /beans 컬렉션에 추가하고 드롭다운 목록도 업데이트
   Future<void> _addNewBean() async {
     String? newBeanName = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('새 원두 추가'),
+        title: const Text('새 원두 추가'),
         content: TextField(
           decoration: InputDecoration(
             labelText: '원두 이름',
@@ -166,16 +202,35 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('취소'),
+            child: const Text('취소'),
           ),
           TextButton(
+            // TextField의 Controller를 직접 가져오기 어렵기 때문에, onSubmitted 사용을 권장합니다.
+            // 또는 TextButton 내에서 새로운 TextEditingController를 선언하고 값을 가져옵니다.
+            // 여기서는 간단히 Navigator.pop(ctx, newController.text) 방식으로 변경했습니다.
             onPressed: () {
-              var controller = ctx.widget.toString().contains('TextField')
-                  ? (ctx.widget as TextField).controller?.text ?? ''
-                  : '';
-              Navigator.pop(ctx, controller);
+              final tempController = TextEditingController(); // 임시 컨트롤러
+              showDialog(
+                context: ctx,
+                builder: (innerCtx) => AlertDialog(
+                  title: const Text('새 원두 이름 입력'),
+                  content: TextField(controller: tempController),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(innerCtx),
+                        child: const Text('취소')),
+                    TextButton(
+                        onPressed: () =>
+                            Navigator.pop(innerCtx, tempController.text),
+                        child: const Text('확인')),
+                  ],
+                ),
+              ).then((result) {
+                if (result != null && result.isNotEmpty)
+                  Navigator.pop(ctx, result);
+              });
             },
-            child: Text('추가'),
+            child: const Text('추가'),
           ),
         ],
       ),
@@ -186,317 +241,323 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'userId': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
       });
+      // 마스터 원두 목록 (_availableBeans) 업데이트
       setState(() {
-        _beanOptions.add({'id': docRef.id, 'name': newBeanName});
+        _availableBeans.add({'id': docRef.id, 'name': newBeanName});
+        // 새로 추가된 원두를 드롭다운에서 선택된 상태로 설정할 수도 있습니다.
       });
     }
   }
 
-  void _addBean() {
+  // 현재 레시피에 원두 입력 항목(한 줄)을 추가하는 함수
+  void _addBeanEntryRow() {
     setState(() {
-      _beans.add({'beanId': null, 'weight': '', 'name': ''});
+      _beans.add({
+        'beanId': null, // 처음에는 선택되지 않은 상태
+        'weight': '',
+        'name': '' // 처음에는 이름 없음
+      });
     });
   }
 
-  void _addExtraction() {
-    setState(() {
-      _extractions.add({'stage': '${_extractions.length + 1}', 'water': ''});
-    });
-  }
-
+  // 레시피 저장/수정 함수
   Future<void> _saveRecipe() async {
-    if (_titleController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('제목을 입력하세요')),
-      );
+    if (_dateController.text.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('날짜는 필수입니다.')));
       return;
     }
-    if (widget.category == 'coffee') {
-      if (_beans.any((b) => b['beanId'] == null || b['weight'].isEmpty)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('모든 원두와 무게를 입력하세요')),
-        );
-        return;
+
+    // 레시피 추가/수정은 userId가 필수라고 가정 (로그인 필요성 유지)
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
+      return;
+    }
+
+    Map<String, dynamic> recipeData = {
+      'title': _dateController.text,
+      'category': widget.category,
+      'userId': currentUser.uid, // 레시피 작성자 ID 저장
+      'updatedAt': FieldValue.serverTimestamp(), // 수정 시간
+    };
+
+    if (!widget.isEditing) {
+      // 새로 생성 시에만 createdAt 추가
+      recipeData['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    if (widget.category == "coffee") {
+      recipeData.addAll({
+        'beanType': _beanType,
+        'beans': _beans
+            .where(
+                (b) => b['beanId'] != null && b['weight'].toString().isNotEmpty)
+            .toList(), // 비어있지 않은 원두 항목만 저장
+        'blooming': {
+          'water': int.tryParse(_bloomingWaterController.text) ?? 0,
+          'time': int.tryParse(_bloomingTimeController.text) ?? 0,
+        },
+        'additionalWater': _additionalWater,
+        'additionalWaterAmount': _additionalWater
+            ? int.tryParse(_additionalWaterAmountController.text) ?? 0
+            : 0,
+      });
+    } else {
+      // 요리 레시피
+      recipeData.addAll({
+        'recipeName': _recipeNameController.text,
+        'ingredients': _ingredientsController.text,
+        'instructions': _instructionsController.text,
+      });
+    }
+
+    try {
+      if (widget.isEditing && widget.recipeId != null) {
+        await FirebaseFirestore.instance
+            .collection('recipes')
+            .doc(widget.recipeId)
+            .update(recipeData);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('레시피가 수정되었습니다.')));
+      } else {
+        await FirebaseFirestore.instance.collection('recipes').add(recipeData);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('레시피가 등록되었습니다.')));
       }
-      try {
-        Map<String, dynamic> recipeData = {
-          'title': _titleController.text,
-          'category': widget.category,
-          'createdAt': FieldValue.serverTimestamp(),
-          'userId': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
-          'wifeRating': widget.isEditing ? null : 0.0,
-          'wifeReview': '',
-        };
-        if (widget.category == 'coffee') {
-          recipeData.addAll({
-            'beanType': _beanType,
-            'beans': _beans
-                .map((b) => {
-                      'beanId': b['beanId'],
-                      'weight': int.parse(b['weight'] ?? '0'),
-                    })
-                .toList(),
-            'blooming': {
-              'water': int.parse(_bloomingWaterController.text.isEmpty
-                  ? '0'
-                  : _bloomingWaterController.text),
-              'time': int.parse(_bloomingTimeController.text.isEmpty
-                  ? '0'
-                  : _bloomingTimeController.text),
-            },
-            'extractions': _extractions,
-            'additionalWater': _additionalWater,
-            'additionalWaterAmount': _additionalWater
-                ? int.parse(_additionalWaterAmountController.text.isEmpty
-                    ? '0'
-                    : _additionalWaterAmountController.text)
-                : 0,
-          });
-        } else {
-          recipeData.addAll({
-            'recipeName': _recipeNameController.text,
-            'ingredients': _ingredientsController.text,
-            'instructions': _instructionsController.text,
-          });
-        }
-        if (widget.isEditing) {
-          await FirebaseFirestore.instance
-              .collection('recipes')
-              .doc(widget.recipeId)
-              .update(recipeData);
-        } else {
-          await FirebaseFirestore.instance
-              .collection('recipes')
-              .add(recipeData);
-        }
-        Navigator.pop(context);
-      } catch (error) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('저장 실패: $error')),
-        );
-      }
+      Navigator.pop(context); // 이전 화면으로 돌아가기
+    } catch (e) {
+      print('레시피 저장/수정 오류: $e');
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('오류 발생: $e')));
     }
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    String? hintText,
-    TextInputType keyboardType = TextInputType.text,
-    Function(String)? onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hintText ?? '입력하세요',
-          helperText: keyboardType == TextInputType.number ? '양수만 입력하세요' : null,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        keyboardType: keyboardType,
-        onChanged: onChanged,
-      ),
-    );
+  @override
+  void dispose() {
+    _dateController.dispose();
+    _recipeNameController.dispose();
+    _ingredientsController.dispose();
+    _instructionsController.dispose();
+    _bloomingWaterController.dispose();
+    _bloomingTimeController.dispose();
+    _additionalWaterAmountController.dispose();
+    // _beanWeightController.dispose(); // _addSelectedBeanToList 함수에서 사용했으므로 여기서 dispose
+
+    // 필요하다면 동적으로 추가된 TextField 컨트롤러도 dispose해야 하지만,
+    // 현재 구현에서는 하나의 TextField 컨트롤러를 사용하지 않고, 각 항목에 별도의 컨트롤러를 두지 않았습니다.
+    // 만약 각 동적 항목에 TextEditingController를 사용한다면 여기서 dispose 처리가 필요합니다.
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            widget.isEditing ? '레시피 수정' : '레시피 추가',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+            '${widget.category == "coffee" ? "커피" : "요리"} 레시피 ${widget.isEditing ? "수정" : "설정"}'),
+        // actions: [
+        //   if (!widget.isEditing) // 수정 모드가 아닐 때만 불러오기 버튼 표시
+        //     IconButton(
+        //       icon: const Icon(Icons.download), // 불러오기 아이콘
+        //       onPressed: () async {
+        //         final selectedRecipeId = await Navigator.push(
+        //           context,
+        //           MaterialPageRoute(
+        //             builder: (context) =>
+        //                 SelectRecipeScreen(category: widget.category),
+        //           ),
+        //         );
+        //         if (selectedRecipeId != null) {
+        //           _loadRecipeData(selectedRecipeId,
+        //               isForEditing: false); // 불러온 레시피ID로 데이터 로드 (새 작성용)
+        //         }
+        //       },
+        //     ),
+        // ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _dateController,
+              decoration:
+                  const InputDecoration(labelText: '날짜 (예: 2024-03-02)'),
             ),
-          ),
-          backgroundColor: Colors.brown[700],
-        ),
-        body: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            16.0,
-            16.0,
-            16.0,
-            16.0 + MediaQuery.of(context).padding.bottom,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTextField(
-                controller: _titleController,
-                label: '레시피 제목',
+            const SizedBox(height: 10),
+            if (widget.category == "coffee") ...[
+              const Text('원두 타입'),
+              Row(
+                children: [
+                  Expanded(
+                    child: RadioListTile(
+                      title: const Text('단일'),
+                      value: 'single',
+                      groupValue: _beanType,
+                      onChanged: (value) => setState(() => _beanType = value!),
+                    ),
+                  ),
+                  Expanded(
+                    child: RadioListTile(
+                      title: const Text('혼합'),
+                      value: 'blend',
+                      groupValue: _beanType,
+                      onChanged: (value) => setState(() => _beanType = value!),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              if (widget.category == 'coffee') ...[
-                Text('원두', style: Theme.of(context).textTheme.titleMedium),
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: NeverScrollableScrollPhysics(),
-                  itemCount: _beans.length,
-                  itemBuilder: (context, index) {
-                    var bean = _beans[index];
-                    return Row(
+              const SizedBox(height: 10),
+              // === 원두 추가 및 목록 UI ===
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('사용된 원두',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed:
+                        _addBeanEntryRow, // <<< 여기를 수정 (_addBean() 대신 _addBeanEntryRow() 호출)
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.library_add), // 새로운 원두 종류 추가 버튼
+                    onPressed: _addNewBean,
+                  ),
+                ],
+              ),
+              Column(
+                children: _beans.asMap().entries.map((entry) {
+                  int idx = entry.key;
+                  Map<String, dynamic> beanEntry = entry.value;
+
+                  // 이 부분은 각 항목에 대한 TextFieldController가 필요할 수 있습니다.
+                  // 단순하게 value를 받아와서 _beans 리스트의 해당 Map을 업데이트하는 방식으로 구현합니다.
+                  TextEditingController beanWeightController =
+                      TextEditingController(
+                          text: beanEntry['weight'].toString());
+                  beanWeightController.addListener(() {
+                    beanEntry['weight'] =
+                        int.tryParse(beanWeightController.text) ?? 0;
+                  });
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: Row(
                       children: [
                         Expanded(
+                          flex: 3,
                           child: DropdownButtonFormField<String>(
-                            value: bean['beanId']?.isEmpty ?? true
-                                ? null
-                                : bean['beanId'],
-                            hint: Text('원두 선택'),
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
-                            items: _beanOptions.map((option) {
-                              return DropdownMenuItem<String>(
-                                value: option['id'] as String,
-                                child: Text(option['name'] as String),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
+                            value: beanEntry['beanId'],
+                            hint: const Text('원두 선택'),
+                            onChanged: (String? newValue) {
                               setState(() {
-                                _beans[index]['beanId'] = value;
-                                _beans[index]['name'] = _beanOptions.firstWhere(
-                                        (opt) => opt['id'] == value)['name']
-                                    as String;
+                                // 선택된 원두의 id와 name을 _beans 리스트 내 해당 항목에 업데이트
+                                beanEntry['beanId'] = newValue;
+                                beanEntry['name'] = _availableBeans.firstWhere(
+                                    (bean) => bean['id'] == newValue)['name'];
                               });
                             },
-                            menuMaxHeight: 288,
+                            items: _availableBeans
+                                .map<DropdownMenuItem<String>>((bean) {
+                              return DropdownMenuItem<String>(
+                                value: bean['id'],
+                                child: Text(bean['name']!),
+                              );
+                            }).toList(),
+                            decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8)),
                           ),
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Expanded(
+                          flex: 1,
                           child: TextField(
-                            controller:
-                                TextEditingController(text: bean['weight']),
-                            decoration: InputDecoration(
-                              labelText: '무게 (g)',
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
+                            controller: beanWeightController,
+                            decoration: const InputDecoration(
+                                labelText: 'g',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8)),
                             keyboardType: TextInputType.number,
+                            // onSubmitted 또는 onChanged에서 바로 업데이트도 가능 (addListener 대신)
                             onChanged: (value) {
-                              setState(() {
-                                _beans[index]['weight'] = value;
-                              });
+                              beanEntry['weight'] = int.tryParse(value) ?? 0;
                             },
                           ),
                         ),
                         IconButton(
-                          icon: Icon(Icons.remove_circle, color: Colors.red),
+                          icon: const Icon(Icons.remove_circle_outline,
+                              color: Colors.red),
                           onPressed: () {
                             setState(() {
-                              _beans.removeAt(index);
+                              _beans.removeAt(idx);
                             });
                           },
                         ),
                       ],
-                    );
-                  },
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    ElevatedButton(
-                      onPressed: _addBean,
-                      child: Text('원두 추가'),
                     ),
-                    ElevatedButton(
-                      onPressed: _addNewBean,
-                      child: Text('새 원두 추가'),
-                    ),
-                  ],
-                ),
-                _buildTextField(
-                  controller: _bloomingWaterController,
-                  label: '블루밍 물량 (ml)',
-                  keyboardType: TextInputType.number,
-                ),
-                _buildTextField(
-                  controller: _bloomingTimeController,
-                  label: '블루밍 시간 (초)',
-                  keyboardType: TextInputType.number,
-                ),
-                ..._extractions.asMap().entries.map((entry) {
-                  int index = entry.key;
-                  var extraction = entry.value;
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller:
-                              TextEditingController(text: extraction['stage']),
-                          label: '추출 단계',
-                          onChanged: (value) => extraction['stage'] = value,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildTextField(
-                          controller:
-                              TextEditingController(text: extraction['water']),
-                          label: '물량 (ml)',
-                          keyboardType: TextInputType.number,
-                          onChanged: (value) => extraction['water'] = value,
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.remove_circle, color: Colors.red),
-                        onPressed: () {
-                          setState(() {
-                            _extractions.removeAt(index);
-                          });
-                        },
-                      ),
-                    ],
                   );
                 }).toList(),
-                ElevatedButton(
-                  onPressed: _addExtraction,
-                  child: const Text('추출 단계 추가'),
-                ),
-                CheckboxListTile(
-                  title: const Text('가수 여부'),
-                  value: _additionalWater,
-                  onChanged: (value) {
-                    setState(() {
-                      _additionalWater = value!;
-                    });
-                  },
-                ),
-                if (_additionalWater)
-                  _buildTextField(
-                    controller: _additionalWaterAmountController,
-                    label: '가수량 (ml)',
-                    keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 10),
+              const Text('블루밍'),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _bloomingWaterController,
+                      decoration: const InputDecoration(labelText: '물 (g)'),
+                      keyboardType: TextInputType.number,
+                    ),
                   ),
-              ] else ...[
-                _buildTextField(
-                  controller: _recipeNameController,
-                  label: '요리 이름',
+                  Expanded(
+                    child: TextField(
+                      controller: _bloomingTimeController,
+                      decoration: const InputDecoration(labelText: '시간 (초)'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
+              ),
+              CheckboxListTile(
+                title: const Text('가수 여부'),
+                value: _additionalWater,
+                onChanged: (value) => setState(() => _additionalWater = value!),
+              ),
+              if (_additionalWater)
+                TextField(
+                  controller: _additionalWaterAmountController,
+                  decoration: const InputDecoration(labelText: '가수량 (g)'),
+                  keyboardType: TextInputType.number,
                 ),
-                _buildTextField(
-                  controller: _ingredientsController,
-                  label: '재료',
-                ),
-                _buildTextField(
-                  controller: _instructionsController,
-                  label: '조리법',
-                ),
-              ],
+            ] else ...[
+              TextField(
+                controller: _recipeNameController,
+                decoration: const InputDecoration(labelText: '요리 이름'),
+              ),
+              TextField(
+                controller: _ingredientsController,
+                decoration: const InputDecoration(labelText: '재료 목록'),
+                maxLines: 3,
+              ),
+              TextField(
+                controller: _instructionsController,
+                decoration: const InputDecoration(labelText: '조리 방법'),
+                maxLines: 5,
+              ),
             ],
-          ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _saveRecipe,
-          backgroundColor: Colors.brown[700],
-          foregroundColor: Colors.white,
-          tooltip: '레시피 저장',
-          child: const Icon(Icons.save),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _saveRecipe, // <<< _addRecipe 대신 _saveRecipe 호출
+              child: Text(widget.isEditing ? '수정' : '저장'),
+            ),
+          ],
         ),
       ),
     );
