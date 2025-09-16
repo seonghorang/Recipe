@@ -52,3 +52,4 @@ firestore.rules
 storage.rules
 .firebaserc
 .metadata
+/lib/firebase_options.dart
