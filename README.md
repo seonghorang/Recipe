@@ -1,6 +1,6 @@
-# Recipe Manager (레시피 매니저)
+# Recipe Manager
 
-이 프로젝트는 핸드드립 레시피와 요리 레시피를 효율적으로 관리하고, 일본어 회화 학습을 지원하는 **Flutter 기반 모바일 애플리케이션**입니다. 사용자는 레시피 추가/편집/삭제, 데이터 시각화를 통한 패턴 분석, 그리고 새로운 기능인 **회화 학습 탭에서 음성 녹음 및 재생을 통한 상호작용**을 경험할 수 있습니다. Firebase Cloud Functions를 활용한 **푸시 알림 시스템**을 구현하여, 중요한 업데이트를 사용자에게 실시간으로 전달합니다.
+핸드드립 레시피와 요리 레시피를 효율적으로 관리하고, 일본어 회화 학습을 지원하는 **Flutter 기반 모바일 애플리케이션**입니다. 사용자는 레시피 추가/편집/삭제, 데이터 시각화를 통한 패턴 분석, 그리고 새로운 기능인 **회화 학습 탭에서 음성 녹음 및 재생을 통한 상호작용**을 경험할 수 있습니다. Firebase Cloud Functions를 활용한 **푸시 알림 시스템**을 구현하여, 중요한 업데이트를 사용자에게 실시간으로 전달합니다.
 
 <br>
 <br>
@@ -73,9 +73,3 @@
     - `just_audio`의 `AudioPlayer` 인스턴스가 `ProcessingState.completed` 상태에 도달했을 때 `player.stop()` 대신 `player.pause()`와 `player.seek(Duration.zero)`를 사용하여 플레이어 리소스를 해제하지 않고 **"준비된(ready)" 상태로 유지**. 이를 통해 불필요한 `MediaCodec` 재초기화를 줄여 재생 지연을 대폭 개선.
     - `player.setUrl()` 호출 전에 `player.stop()` 및 `player.seek(Duration.zero)`를 호출하여 이전 연결의 잔상을 정리함으로써 `Connection aborted` 오류를 방지.
 
-## 향후 계획
-- **이미지 업로드**: 레시피 및 회화 게시글에 이미지 첨부 기능 구현 (Firebase Storage 연동).
-- **오프라인 지원**: Firestore 오프라인 캐싱 활성화를 통해 네트워크 상태에 관계없이 앱 사용성 개선.
-- **Google Play 배포**: Android App Bundle(AAB) 빌드 및 Google Play Console을 통한 공식 배포.
-
----
