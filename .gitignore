@@ -41,3 +41,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+recipe_manager.jks
+
+# firebase
+certificate.pem
+firebase.json
+firestore.indexes.json
+firestore.rules
+storage.rules
