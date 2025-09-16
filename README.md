@@ -1,98 +1,81 @@
-# Recipe Manager
-  
-이 프로젝트는 핸드드립 레시피와 요리 레시피를 관리하는 Flutter 기반 모바일 애플리케이션입니다. 사용자는 레시피를 추가, 편집, 삭제하고, Firestore를 통해 데이터를 저장하며, 통계 탭에서 데이터 시각화를 통해 레시피 패턴을 분석할 수 있습니다. 지속적인 유지보수와 기능 개선을 통해 개발 기술을 연마하고 있습니다.
+# Recipe Manager (레시피 매니저)
+
+이 프로젝트는 핸드드립 레시피와 요리 레시피를 효율적으로 관리하고, 일본어 회화 학습을 지원하는 **Flutter 기반 모바일 애플리케이션**입니다. 사용자는 레시피 추가/편집/삭제, 데이터 시각화를 통한 패턴 분석, 그리고 새로운 기능인 **회화 학습 탭에서 음성 녹음 및 재생을 통한 상호작용**을 경험할 수 있습니다. Firebase Cloud Functions를 활용한 **푸시 알림 시스템**을 구현하여, 중요한 업데이트를 사용자에게 실시간으로 전달합니다.
+
 <br>
 <br>
 <br>
 <img src="assets/Recording.gif" alt="Recipe Manager Demo" width="225" height="400">
 <br>
 
-
 ## 프로젝트 개요
-### 목표: 
-- 커피 러버와 주부를 위한 직관적이고 효율적인 레시피 관리 앱 개발
 
-### 기술 스택:  
-- Frontend: Flutter (Dart), fl_chart로 데이터 시각화  
-- Backend: Firebase Firestore (실시간 데이터베이스)  
-- 기타: GitHub로 버전 관리, Flutter의 릴리스 빌드 및 APK 배포  
+### 목표:
+- 사용자 친화적인 레시피 관리 및 효율적인 데이터 분석 기능 제공
+- Firebase Backend as a Service (BaaS)를 활용한 서버리스 아키텍처 구현 및 운영 능력 입증
+- 복잡한 비동기 처리 및 실시간 통신을 요구하는 기능(음성, 푸시 알림) 구현을 통한 기술 역량 심화
 
+### 기술 스택:
+- **Frontend**: Flutter (Dart), `fl_chart` (데이터 시각화), `just_audio` (오디오 재생), `record` (오디오 녹음)
+- **Backend**: Firebase Firestore (실시간 NoSQL 데이터베이스), Firebase Storage (오디오 파일 저장), Firebase Cloud Functions (서버리스 백엔드 로직), Firebase Cloud Messaging (푸시 알림)
+- **Version Control**: GitHub
 
 ### 주요 기능:
-- 커피(원두 타입, 블루밍, 추출 단계) 및 요리(재료, 조리법) 레시피 추가/편집
-- 최근 레시피 자동 로드 및 Firestore 동기화
-- 통계 탭에서 월별 레시피 수와 별점 분포 시각화
-- 반응형 UI 및 테마 기반 디자인 (브라운 테마)
+- **레시피 관리**: 커피 및 요리 레시피 CRUD 기능 및 최근 레시피 자동 로드
+- **데이터 시각화**: `fl_chart`를 활용한 월별 레시피 수 및 별점 분포, 원두별 평균 별점 시각화
+- **회화 학습 탭**: 일본어 문장/발음 녹음 업로드, 텍스트/음성 댓글 작성 및 재생 기능
+- **실시간 푸시 알림**: 새 게시글/레시피 등록 시 백엔드 트리거를 통한 푸시 알림 발송
+- **반응형 디자인**: `SafeArea`, `MediaQuery` 적용을 통한 다양한 기기 호환성 확보
 
-### 상태: 
-- 지속적 유지보수 중 (최근 업데이트: 2025년 6월 29일)
+### 상태:
+- 지속적 유지보수 중 (최근 업데이트: 2025년 9월 16일)
 
-### 세부사항:
-- Flutter 3.22 이상
-- Firebase 프로젝트 설정 (Firestore 활성화)
-- Android/iOS 에뮬레이터 또는 물리적 디바이스
+## 주요 기능 상세
 
-## 주요 기능
 ### 1. 레시피 관리
+- 커피(원두, 블루밍, 추출 단계) 및 요리(재료, 조리법) 레시피 추가, 편집, 삭제.
+- 최신 10개 레시피를 카드 형태로 표시하는 홈 화면 UI.
 
-- 레시피 추가/편집: 커피(원두, 블루밍, 추출) 및 요리(재료, 조리법) 레시피를 입력하고 Firestore에 저장
-- 최근 레시피 로드: 새 레시피 추가 시 이전 레시피 데이터를 자동으로 채움
-- 카드 기반 UI: 홈 화면에서 최신 10개 레시피를 카드 형태로 표시, 탭하여 상세 보기
+### 2. 데이터 시각화 및 분석
+- **통계 탭**: `fl_chart`로 월별 레시피 수(막대 차트)와 별점 분포(파이 차트)를 시각화.
+- **메인 화면**: 최근 업데이트된 데이터 분석 기능을 통해 원두별 평균 별점 및 사용 횟수를 직관적으로 제공.
 
-### 2. 데이터 시각화(개선 중)
+### 3. 회화 학습 탭 (핵심 신규 기능)
+- **게시글 작성**: 일본어 문장, 해석, 주의점 및 음성 녹음 (`record` 패키지) 업로드.
+- **댓글 기능**: 텍스트 또는 음성 녹음 형태의 댓글 작성 지원.
+- **오디오 재생**: `just_audio`를 이용한 게시글 및 댓글 오디오 재생. 단일 플레이어 인스턴스 관리로 리소스 최적화.
 
-- 통계 탭: fl_chart를 사용해 월별 레시피 수(막대 차트)와 별점 분포(파이 차트) 시각화
-- 실시간 업데이트: Firestore의 StreamBuilder로 데이터 동기화
+### 4. 실시간 푸시 알림 시스템 (핵심 신규 기능)
+- **Firebase Cloud Functions**: Firestore의 `onCreate` 이벤트를 감지하여 새로운 레시피, 회화 게시글, 댓글 등록 시 사용자에게 푸시 알림 전송.
+- **FCM (Firebase Cloud Messaging)**: 앱이 백그라운드/종료 상태일 때도 알림이 표시되도록 구현.
 
-### 3. 반응형 디자인
-
-- 브라운 테마 기반 UI로 커피 애호가의 감성 반영
-- SingleChildScrollView와 FloatingActionButton으로 스크롤 가능한 긴 폼 처리
-
-## 업데이트 내역
-- ### 이 프로젝트는 지속적인 개선을 통해 안정성과 사용자 경험을 향상시키고 있습니다.
-
-- ### 통계 탭 RangeError 수정
-  - 문제: 통계 탭에서 뒤로 가기 시 RangeError (length): Invalid value: not in inclusive range 0..1: 2
-  - 해결: main.dart의 네비게이션 로직을 단순화하고 _selectedIndex를 _screens 리스트와 동기화
-  - 추가: StatisticsScreen에 데이터 검증 추가로 빈 데이터 처리 (ratingDistribution, categoryDistribution)
-
-- ### 레시피 추가 페이지 저장 기능 개선
-  - 문제: 저장 버튼의 가시성 부족 및 입력 검증 미흡
-  - 해결:
-    - RecipeSetupScreen에 FloatingActionButton으로 저장 버튼 추가, 화면 오른쪽 하단 고정
-    - 요리 카테고리(cooking)에 ingredients, instructions 필수 입력 검증 추가
-    - Firestore 저장 시 에러 핸들링 강화 및 디버깅 로그 추가
-    - 편집 모드에서 createdAt, wifeRating, wifeReview 유지
-
-- ### APK 빌드 준비
-  - 키스토어 생성 및 서명 설정 추가
-  - flutter build apk --release로 배포 가능한 APK 생성
-
-- ### 상세 페이지 버그 수정
-  - 문제: RecipeDetailScreen에서 별점 입력 시 차트 표시 및 리다이렉션, 별점 미적용
-  - 해결:
-    - LineChart와 ratingHistory StreamBuilder 제거, 별점/리뷰 입력 UI로 단순화
-    - _updateRatingAndReview에서 double 저장 및 비동기 처리 개선
-    - 리다이렉션 방지 위해 네비게이션 로직 점검
-
-- ### 하단 네비게이션 바에 UI 가려짐
-  - 문제: 하단 네비게이션 바에 UI가 가려짐
-  - 해결: SafeArea와 MediaQuery.padding.bottom으로 동적 패딩 추가
+### 5. 반응형 디자인
+- 브라운 테마 기반의 일관된 UI/UX.
+- 긴 폼(`SingleChildScrollView`) 및 디바이스 노치/네비게이션바(`SafeArea`)에 대응하는 UI 최적화.
 
 ## 기술적 문제와 해결
-- ### 네비게이션 오류:
-  - 하단 네비게이션 바와 Navigator.push 간 상태 불일치 문제를 clamp과 직접 화면 렌더링으로 해결, Flutter의 상태 관리 이해를 심화.
-- ### Firestore 통합:
-  - 실시간 데이터 동기화와 데이터 검증을 통해 안정적인 백엔드 통합 구현.
-- ### 데이터 시각화:
-  - fl_chart를 활용해 소규모 데이터셋(40개 레시피)으로 효율적인 차트 렌더링, 빈 데이터 처리로 사용자 경험 개선.
-- ### 영상 삽입:
-  - MP4 업로드 실패 문제를 블로그 업로드 후 영상 등록으로 해결, GitHub의 렌더링 제한 우회.
-- ### UI 최적화:
-  - RecipeDetailScreen에서 차트 제거, SafeArea로 디바이스 UI 호환성 개선.
+
+본 프로젝트를 진행하며 마주쳤던 주요 기술적 난관과 이를 해결한 과정은 다음과 같습니다.
+
+- ### **Firebase Cloud Functions 배포 및 환경 구성 문제 해결**
+  - **문제**: Functions 배포 시 `firebase.json` 구조 오류, Node.js 버전 불일치 (`runtime: nodejs18` vs 로컬 `v22.x.x`), `firebase-tools` 경로 문제, 그리고 `TypeError` (잘못된 `functions.firestore.document` 사용) 등 복합적인 오류 발생. 최종적으로 `Failed to create function` 메시지 발생.
+  - **해결**:
+    - `firebase.json`의 `functions` 설정을 단일 객체 방식으로 정확히 재구성.
+    - `nvm`을 활용하여 로컬 Node.js 버전을 `v18.x.x`로 통일하고 `npm install` 및 `firebase-tools` 재설치.
+    - Firebase CLI (`firebase login --reauth`) 및 `gcloud auth` 재인증, GCP IAM 권한 (Editor, Cloud Functions Admin), 결제 계정(Blaze Plan) 활성화를 통해 서비스 계정의 배포 권한 확보.
+    - Cloud Functions 코드 (`index.js`)의 문법 및 로직 점검.
+
+- ### **오디오 재생 지연 및 런타임 오류 최적화 (`just_audio`)**
+  - **문제**: 음성 파일 재생 시 `Connection aborted` 에러, `setState() called after dispose()` 경고, 그리고 `MediaCodec`의 반복적인 초기화로 인한 재생 전 버벅거림(지연 현상) 발생.
+  - **해결**:
+    - `_PostDetailViewState` 클래스 내에서 `StreamSubscription`을 효과적으로 관리하고, 위젯이 마운트된 상태(`mounted`)에서만 `setState()`를 호출하여 `setState after dispose` 오류 방지.
+    - `dispose()` 시점에 모든 `StreamSubscription`을 `cancel()`하여 리소스 누수 방지.
+    - `just_audio`의 `AudioPlayer` 인스턴스가 `ProcessingState.completed` 상태에 도달했을 때 `player.stop()` 대신 `player.pause()`와 `player.seek(Duration.zero)`를 사용하여 플레이어 리소스를 해제하지 않고 **"준비된(ready)" 상태로 유지**. 이를 통해 불필요한 `MediaCodec` 재초기화를 줄여 재생 지연을 대폭 개선.
+    - `player.setUrl()` 호출 전에 `player.stop()` 및 `player.seek(Duration.zero)`를 호출하여 이전 연결의 잔상을 정리함으로써 `Connection aborted` 오류를 방지.
 
 ## 향후 계획
-- 이미지 업로드: 레시피에 사진 추가 기능 (Firebase Storage 연동)
-- 오프라인 지원: Firestore 오프라인 캐싱 활성화
-- Google Play 배포: AAB 빌드 및 Play Console 업로드
+- **이미지 업로드**: 레시피 및 회화 게시글에 이미지 첨부 기능 구현 (Firebase Storage 연동).
+- **오프라인 지원**: Firestore 오프라인 캐싱 활성화를 통해 네트워크 상태에 관계없이 앱 사용성 개선.
+- **Google Play 배포**: Android App Bundle(AAB) 빌드 및 Google Play Console을 통한 공식 배포.
+
+---
