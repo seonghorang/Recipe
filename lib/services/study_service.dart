@@ -18,14 +18,14 @@ class StudyService {
   }) async {
     final user = _auth.currentUser;
     if (user == null) {
-      print('Error: User not logged in for adding post.');
+      // print('Error: User not logged in for adding post.');
       return;
     }
 
     String? audioUrl =
         await _uploadAudioFile(localAudioFilePath, user.uid, 'study_posts');
     if (audioUrl == null) {
-      print('Error: Audio file upload failed.');
+      // print('Error: Audio file upload failed.');
       return;
     }
 
@@ -71,12 +71,12 @@ class StudyService {
   }) async {
     final user = _auth.currentUser;
     if (user == null) {
-      print('Error: User not logged in for adding comment.');
+      // print('Error: User not logged in for adding comment.');
       throw Exception('User not logged in'); // 오류 throw
     }
 
     if (localAudioFilePath == null && text == null) {
-      print('Error: Comment must have either audio or text.');
+      // print('Error: Comment must have either audio or text.');
       throw Exception('댓글 내용이 없습니다.'); // 오류 throw
     }
 
@@ -85,7 +85,7 @@ class StudyService {
       audioUrl =
           await _uploadAudioFile(localAudioFilePath, user.uid, 'comments');
       if (audioUrl == null) {
-        print('Error: Audio file upload failed.');
+        // print('Error: Audio file upload failed.');
         throw Exception('음성 파일 업로드 실패');
       }
     }
@@ -129,15 +129,16 @@ class StudyService {
           .child(type)
           .child('${DateTime.now().millisecondsSinceEpoch}.m4a');
 
-      print('Firebase Storage 업로드 시작: ${storageRef.fullPath}');
-      final uploadTask = storageRef.putFile(file);
+      // print('Firebase Storage 업로드 시작: ${storageRef.fullPath}');
+      final uploadTask =
+          storageRef.putFile(file, SettableMetadata(contentType: 'audio/m4a'));
       final snapshot = await uploadTask.whenComplete(() {});
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
-      print('Firebase Storage 업로드 성공. URL: $downloadUrl');
+      // print('Firebase Storage 업로드 성공. URL: $downloadUrl');
       return downloadUrl;
     } catch (e) {
-      print('Firebase Storage 업로드 오류: $e');
+      // print('Firebase Storage 업로드 오류: $e');
       return null;
     }
   }

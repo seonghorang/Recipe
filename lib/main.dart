@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'screens/recipe_detail_screen.dart';
 import 'screens/recipe_setup_screen.dart';
@@ -10,14 +11,96 @@ import 'screens/recipe_list_screen.dart';
 import 'screens/study_screen.dart';
 import 'screens/login_screen.dart';
 import 'firebase_options.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+// ===================== 🔔 FCM 백그라운드 메시지 핸들러 =====================
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  // print("백그라운드 메시지 처리: ${message.messageId}");
+  await _showLocalNotification(message);
+}
+
+// 로컬 알림 플러그인
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+const AndroidNotificationChannel channel = AndroidNotificationChannel(
+  'high_importance_channel', // id
+  'High Importance Notifications', // 이름
+  description: '중요 알림용 채널',
+  importance: Importance.high,
+);
+
+// ===================== 🔔 로컬 알림 표시 함수 =====================
+Future<void> _showLocalNotification(RemoteMessage message) async {
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'high_importance_channel',
+    'High Importance Notifications',
+    channelDescription: '중요 알림용 채널',
+    importance: Importance.max,
+    priority: Priority.high,
+  );
+  const NotificationDetails platformDetails =
+      NotificationDetails(android: androidDetails);
+  await flutterLocalNotificationsPlugin.show(
+    message.messageId.hashCode,
+    message.notification?.title ?? '알림',
+    message.notification?.body ?? '',
+    platformDetails,
+    payload: message.data['postId'] ?? message.data['recipeId'],
+  );
+}
+
+// ===================== 🔔 메인 함수 =====================
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // runApp(const MaterialApp(home: AudioRecorderPlayer()));
+
+  // 🔔 로컬 알림 초기화
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings =
+      InitializationSettings(android: initializationSettingsAndroid);
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse: (NotificationResponse response) {
+      // print('알림 클릭: ${response.payload}');
+    },
+  );
+
+  // 🔔 채널 생성
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  // 🔔 백그라운드 메시지 핸들러 등록
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // 🔔
+  NotificationSettings settings =
+      await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+  // print('알림 권한 상태: ${settings.authorizationStatus}');
+  // 🔔 포그라운드 메시지
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    // print('포그라운드 메시지 수신: ${message.notification?.title}');
+    _showLocalNotification(message);
+  });
+
+  // 🔔 알림 클릭 시
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    // print('앱 열림(알림 클릭): ${message.notification?.title}');
+  });
+
   runApp(const MyApp());
 }
 
+// ===================== 🔔 MyApp =====================
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -26,30 +109,19 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '레시피 관리',
-      theme: ThemeData(
-        primarySwatch: Colors.orange,
-      ),
+      theme: ThemeData(primarySwatch: Colors.orange),
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            print(
-                'MyApp StreamBuilder: ConnectionState.waiting. Showing CircularProgressIndicator.');
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            print(
-                'MyApp StreamBuilder: Error: ${snapshot.error}. Showing error screen.');
-            return Center(child: Text('Error: ${snapshot.error}')); // 에러 메시지 표시
+            return Center(child: Text('Error: ${snapshot.error}'));
           }
           if (snapshot.hasData) {
-            print(
-                'MyApp StreamBuilder: Signed in user: ${snapshot.data?.uid}. Returning MainScreen.');
-            // 여기서 MainScreen이 잘 로드되는지 확인이 필요
             return const MainScreen();
           }
-          print(
-              'MyApp StreamBuilder: No user signed in. Returning LoginScreen.');
           return const LoginScreen();
         },
       ),
@@ -71,15 +143,15 @@ class MyApp extends StatelessWidget {
         },
         '/recipe_list': (context) => const RecipeListScreen(),
         '/study': (context) => const StudyScreen(),
-        '/login': (contexet) => const LoginScreen(),
+        '/login': (context) => const LoginScreen(),
       },
     );
   }
 }
 
+// ===================== 🔔 MainScreen =====================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-
   @override
   _MainScreenState createState() => _MainScreenState();
 }
@@ -94,22 +166,38 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void initState() {
-    // MainScreen의 initState 추가
     super.initState();
-    print('MainScreen: initState called.');
+    _saveInitialToken();
+    FirebaseMessaging.instance.onTokenRefresh.listen((String token) async {
+      if (FirebaseAuth.instance.currentUser != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(FirebaseAuth.instance.currentUser!.uid)
+            .set({'fcmToken': token}, SetOptions(merge: true));
+        // print('FCM token refreshed: $token');
+      }
+    });
   }
 
-  @override
-  void didChangeDependencies() {
-    // MainScreen의 didChangeDependencies 추가
-    super.didChangeDependencies();
-    print('MainScreen: didChangeDependencies called.');
+  Future<void> _saveInitialToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final token = await FirebaseMessaging.instance.getToken().then((t) {
+        // print("현재 기기 토큰: $t");
+      });
+      if (token != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set({'fcmToken': token}, SetOptions(merge: true));
+        // print('Saved initial FCM token: $token');
+      }
+    }
   }
 
   void _onItemTapped(int index) {
-    print('Tapped index: $index'); // 디버깅 로그
     setState(() {
-      _selectedIndex = index.clamp(0, _screens.length - 1); // 인덱스 범위 제한
+      _selectedIndex = index.clamp(0, _screens.length - 1);
     });
   }
 
@@ -132,9 +220,9 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
+// ===================== 🔔 HomeScreen =====================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
@@ -147,16 +235,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    print('HomeScreen: initState called.');
+    // print('HomeScreen: initState called.');
     userId = FirebaseAuth.instance.currentUser?.uid;
-    print('HomeScreen: userId in initState: $userId');
+    // print('HomeScreen: userId in initState: $userId');
   }
 
   @override
   Widget build(BuildContext context) {
-    print('HomeScreen: build method called.');
+    // print('HomeScreen: build method called.');
     if (userId == null) {
-      print('HomeScreen: userId is null, showing CircularProgressIndicator.');
+      // print('HomeScreen: userId is null, showing CircularProgressIndicator.');
       return const Center(child: CircularProgressIndicator());
     }
     return Scaffold(
@@ -221,11 +309,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     .snapshots(),
                 builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    print("StreamBuilder: 데이터 로딩 중...");
+                    // print("StreamBuilder: 데이터 로딩 중...");
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (snapshot.hasError) {
-                    print("StreamBuilder: 오류 발생 - ${snapshot.error}");
+                    // print("StreamBuilder: 오류 발생 - ${snapshot.error}");
                     return Center(child: Text('오류 발생: ${snapshot.error}'));
                   }
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -234,12 +322,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   final recipes = snapshot.data!.docs;
                   if (recipes.isEmpty) {
-                    print(
-                        "StreamBuilder: 데이터 없음 - 현재 필터링된 카테고리: ${isCoffeeSelected ? 'coffee' : 'cooking'}");
+                    // print(
+                    //  "StreamBuilder: 데이터 없음 - 현재 필터링된 카테고리: ${isCoffeeSelected ? 'coffee' : 'cooking'}");
                     return const Center(child: Text('데이터 없음'));
                   }
-                  print(
-                      "StreamBuilder: 데이터 ${recipes.length}개 로드됨. 현재 필터링된 카테고리: ${isCoffeeSelected ? 'coffee' : 'cooking'}");
+                  // print(
+                  //  "StreamBuilder: 데이터 ${recipes.length}개 로드됨. 현재 필터링된 카테고리: ${isCoffeeSelected ? 'coffee' : 'cooking'}");
                   Map<String, int> beanUsage = {};
                   Map<String, double> beanRatingSum = {};
                   Map<String, int> beanRatingCount = {};
@@ -250,37 +338,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context, beanSnapshot) {
                       if (beanSnapshot.connectionState ==
                           ConnectionState.waiting) {
-                        print("FutureBuilder (beans): 원두 이름 로딩 중...");
+                        // print("FutureBuilder (beans): 원두 이름 로딩 중...");
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (beanSnapshot.hasError) {
-                        print(
-                            "FutureBuilder (beans): 오류 발생 - ${beanSnapshot.error}");
+                        // print(
+                        //   "FutureBuilder (beans): 오류 발생 - ${beanSnapshot.error}");
                         return Center(
                             child: Text('원두 이름 로드 오류: ${beanSnapshot.error}'));
                       }
                       if (!beanSnapshot.hasData ||
                           beanSnapshot.data!.docs.isEmpty) {
-                        print("FutureBuilder (beans): beans 컬렉션 데이터 없음.");
+                        // print("FutureBuilder (beans): beans 컬렉션 데이터 없음.");
                         return const Center(child: Text('원두 데이터가 없습니다.'));
                       }
 
                       // 원두 이름 매핑
-                      print("FutureBuilder (beans): 원두 이름 매핑 시작.");
+                      // print("FutureBuilder (beans): 원두 이름 매핑 시작.");
                       for (var doc in beanSnapshot.data!.docs) {
                         beanNames[doc.id] = doc['name'] as String;
                       }
-                      print(
-                          "\n--- 로드된 레시피 데이터 상세 (디버깅용, 이 로그가 안찍혔으므로 ListView.builder 내 문제) ---");
+                      // print(
+                      //   "\n--- 로드된 레시피 데이터 상세 (디버깅용, 이 로그가 안찍혔으므로 ListView.builder 내 문제) ---");
                       // 레시피별 원두 사용 및 평점 집계
                       for (var recipe in recipes) {
                         var data = recipe.data() as Map<String, dynamic>?;
                         if (data == null) {
-                          print(
-                              "  Skipped recipe (data is null): ${recipe.id}");
+                          // print(
+                          //    "  Skipped recipe (data is null): ${recipe.id}");
                           continue;
                         }
-                        print("  Processing recipe: ${recipe.id}");
+                        // print("  Processing recipe: ${recipe.id}");
                         //   if (isCoffeeSelected && data['beans'] != null) {
                         //     var beans = data['beans'] as List<dynamic>;
                         //     for (var bean in beans) {
@@ -303,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           var wifeRating = (data['wifeRating'] as num?)
                               ?.toDouble(); // num 타입에서 double로 변환, null 허용
 
-                          print("    Beans list: ${beans.length} items.");
+                          // print("    Beans list: ${beans.length} items.");
                           for (var bean in beans) {
                             if (bean is Map<String, dynamic>) {
                               // 각 bean 요소가 Map인지 확인
@@ -314,33 +402,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
                               // 유효한 beanId만 집계 (알 수 없음은 건너뛸 수도 있음)
                               if (beanId == '알 수 없음') {
-                                print(
-                                    "      Skipped bean (no beanId or name): $bean");
+                                // print(
+                                //     "      Skipped bean (no beanId or name): $bean");
                                 continue;
                               }
 
                               beanUsage[beanId] = (beanUsage[beanId] ?? 0) + 1;
-                              print(
-                                  "      Bean '$beanId' usage count: ${beanUsage[beanId]}");
+                              // print(
+                              //   "      Bean '$beanId' usage count: ${beanUsage[beanId]}");
 
                               if (wifeRating != null) {
                                 beanRatingSum[beanId] =
                                     (beanRatingSum[beanId] ?? 0.0) + wifeRating;
                                 beanRatingCount[beanId] =
                                     (beanRatingCount[beanId] ?? 0) + 1;
-                                print(
-                                    "      Bean '$beanId' rating sum: ${beanRatingSum[beanId]}, count: ${beanRatingCount[beanId]}");
+                                // print(
+                                //   "      Bean '$beanId' rating sum: ${beanRatingSum[beanId]}, count: ${beanRatingCount[beanId]}");
                               }
                             } else {
-                              print("      Skipped bean (not a Map): $bean");
+                              // print("      Skipped bean (not a Map): $bean");
                             }
                           }
                         } else {
-                          print(
-                              "    Recipe '${recipe.id}': 'beans' 필드가 없거나 List가 아닙니다. type: ${data['beans']?.runtimeType}");
+                          // print(
+                          //    "    Recipe '${recipe.id}': 'beans' 필드가 없거나 List가 아닙니다. type: ${data['beans']?.runtimeType}");
                         }
                       }
-                      print("통계 집계 완료.");
+                      // print("통계 집계 완료.");
 
                       if (beanUsage.isEmpty) {
                         return const Center(child: Text('사용된 원두가 없습니다.'));
@@ -367,10 +455,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         return (b['avgRating'] as double)
                             .compareTo(a['avgRating'] as double);
                       });
-                      print("정렬된 원두 리스트 준비 완료. 상위 5개:");
+                      // print("정렬된 원두 리스트 준비 완료. 상위 5개:");
                       sortedBeans.take(5).forEach((entry) {
-                        print(
-                            "  - ${beanNames[entry['beanId']]} (Avg: ${entry['avgRating']!.toStringAsFixed(1)}, Usage: ${entry['usageCount']})");
+                        // print(
+                        //   "  - ${beanNames[entry['beanId']]} (Avg: ${entry['avgRating']!.toStringAsFixed(1)}, Usage: ${entry['usageCount']})");
                       });
 
                       // 차트 데이터 준비

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -31,8 +32,22 @@ class _LoginScreenState extends State<LoginScreen> {
       'createdAt': FieldValue.serverTimestamp(), // Firestore에 최초 생성될 때만 유효
       // 'updatedAt': FieldValue.serverTimestamp(), // 마지막 업데이트 시간 (선택 사항)
     }, SetOptions(merge: true)); // merge:true는 기존 필드를 덮어쓰지 않고 추가/업데이트
-    print(
-        'User profile saved/updated for UID: ${user.uid} with nickname: $displayNickname');
+    // print(
+    //'User profile saved/updated for UID: ${user.uid} with nickname: $displayNickname');
+  }
+
+  Future<void> _saveFCMToken(String userId) async {
+    try {
+      String? token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await FirebaseFirestore.instance.collection('users').doc(userId).set(
+            {'fcmToken': token},
+            SetOptions(merge: true)); // 기존 프로필에 토큰 추가 (merge: true)
+        // print('FCM Token saved: $token');
+      }
+    } catch (e) {
+      // print('Error saving FCM token: $e');
+    }
   }
 
   Future<void> _signInWithEmail() async {
@@ -46,10 +61,12 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+
       if (userCredential.user != null) {
         // 기존 닉네임 필드를 업데이트하거나, 첫 로그인 시 기본값으로 저장
         await _saveUserProfile(userCredential.user!,
             email: _emailController.text.trim());
+        await _saveFCMToken(userCredential.user!.uid);
       }
 
       // Navigator.pushReplacement로 화면 전환 제거 (main.dart의 StreamBuilder가 처리)
@@ -92,6 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
           nickname: _nicknameController.text.trim(), // 회원가입 시 입력받은 닉네임 사용
           email: _emailController.text.trim(),
         );
+        await _saveFCMToken(userCredential.user!.uid);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -124,7 +142,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _signInAnonymously() async {
     setState(() {
       _isLoading = true;
-      _showNicknameField = false;
     });
     try {
       UserCredential userCredential =
@@ -132,6 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // <<< 익명 로그인 성공 시 사용자 프로필 저장 >>>
       if (userCredential.user != null) {
         await _saveUserProfile(userCredential.user!); // 익명 사용자는 닉네임 기본값 사용
+        await _saveFCMToken(userCredential.user!.uid);
       }
       // Navigator.pushReplacement로 화면 전환 제거
     } on FirebaseAuthException catch (e) {

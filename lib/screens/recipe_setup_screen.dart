@@ -30,15 +30,20 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
   // List<Map<String, dynamic>> _beans: 레시피에 사용될 원두들을 동적으로 관리하는 리스트
   // 각 원소는 { 'beanId': selectedId, 'name': selectedName, 'weight': inputWeight } 형태
   List<Map<String, dynamic>> _beans = [];
-
+  List<Map<String, dynamic>> _extractionSteps = [];
   final TextEditingController _bloomingWaterController =
       TextEditingController();
   final TextEditingController _bloomingTimeController = TextEditingController();
   List<Map<String, dynamic>> _extractions = []; // 아직 사용 안 함
+  List<TextEditingController> _extractionWaterControllers = [];
   bool _additionalWater = false;
   final TextEditingController _additionalWaterAmountController =
       TextEditingController();
+  List<Map<String, dynamic>> _bloomingSteps = [];
 
+  // 각 단계별 물, 시간 입력 컨트롤러 관리를 위한 리스트
+  List<TextEditingController> _bloomingWaterControllers = [];
+  List<TextEditingController> _bloomingTimeControllers = [];
   // Firebase /beans 컬렉션에서 가져올 마스터 원두 목록
   // {id: 'docId', name: '원두명'} 형태로 저장
   List<Map<String, String>> _availableBeans = [];
@@ -48,71 +53,99 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
     super.initState();
     _fetchAvailableBeans(); // 사용 가능한 원두 목록 불러오기
 
-    print("[InitState] RecipeSetupScreen initState 시작."); // <<< 추가
-    print("[InitState] widget.isEditing: ${widget.isEditing}"); // <<< 추가
-    print("[InitState] widget.recipeId: ${widget.recipeId}"); // <<< 추가
+    // print("[RecipeSetup] initState 시작.");
+    // print(
+    // "[RecipeSetup] isEditing: ${widget.isEditing}, recipeId: ${widget.recipeId}");
 
+    // 이 변수들은 _loadMostRecentRecipe()가 성공하면 채워지므로,
+    // 초기에는 빈 상태로 시작하고 _loadMostRecentRecipe() 내에서 데이터를 채웁니다.
+    // 만약 아무 데이터도 불러오지 못하면, 수동으로 하나의 빈 칸을 추가합니다.
+    _beans.clear(); // initState에서 초기화하여 _loadMostRecentRecipe() 이후에 중복 추가되지 않도록
+    _bloomingSteps.clear();
+    _bloomingWaterControllers.clear();
+    _bloomingTimeControllers.clear();
+
+    // 1. 기존 레시피 수정 모드 (recipeId가 주어졌을 때)
     if (widget.isEditing && widget.recipeId != null) {
-      print("[InitState] 새 레시피 추가 모드 감지, _loadMostRecentRecipe 호출 시도.");
-      _loadRecipeData(widget.recipeId!, isForEditing: true); // 기존 레시피 데이터 로드
-    } else if (!widget.isEditing && widget.recipeId != null) {
-      _loadMostRecentRecipe();
+      // print("[RecipeSetup] 수정 모드: 특정 레시피 로드 시작.");
+      _loadRecipeData(widget.recipeId!, isForEditing: true);
+      _extractionSteps.add({'stage': 1, 'water': null}); // 최소 1단계는 기본으로 제공
+      _extractionWaterControllers.add(TextEditingController());
     }
-    // 새로운 레시피 추가 시, 최소 하나의 원두 입력 칸을 기본으로 제공 (이 로직은 그대로 유지)
-    if (widget.category == "coffee" && _beans.isEmpty) {
-      if (_beans.isEmpty) {
-        // 이전 로드에서 _beans가 채워지지 않았다면
+    // 2. 새 레시피 추가 모드 (isEditing이 false이고 recipeId가 null일 때)
+    else if (!widget.isEditing && widget.recipeId == null) {
+      // print("[RecipeSetup] 새 레시피 추가 모드: _loadMostRecentRecipe 호출.");
+      _loadMostRecentRecipe(); // 이 함수 내에서 데이터를 가져오거나, 없으면 기본 빈 칸 추가
+    }
+    // 3. 그 외의 모든 경우 (예: 조건에 해당하지 않는 이상 케이스)
+    else {
+      // print("[RecipeSetup] 알 수 없는 모드 진입. 기본 빈 칸 추가.");
+      // 기본적으로 최소한 하나의 원두/블루밍 입력 칸 제공 (데이터 로드 실패 또는 해당 없는 카테고리)
+      if (widget.category == "coffee") {
         _beans.add({'beanId': null, 'weight': '', 'name': ''});
+        _bloomingSteps.add({'water': null, 'time': null});
+        _bloomingWaterControllers.add(TextEditingController());
+        _bloomingTimeControllers.add(TextEditingController());
       }
     }
   }
 
   Future<void> _loadMostRecentRecipe() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      print("[LoadRecent] 사용자 로그인 안됨. 최근 레시피 불러오기 건너뛰기.");
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그인이 필요하여 최근 레시피를 불러올 수 없습니다.')));
-      return;
-    }
-    print("[LoadRecent] 현재 로그인 사용자 UID: ${currentUser.uid}");
-    print("[LoadRecent] 현재 레시피 카테고리: ${widget.category}");
+    // print("[LoadRecent] _loadMostRecentRecipe 함수 시작.");
+    // print("[LoadRecent] 현재 레시피 카테고리: ${widget.category}");
 
     try {
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('recipes')
-          .where('userId', isEqualTo: currentUser.uid)
+          // 사용자 필터 제거됨 (보안 규칙 true니까 가능)
           .where('category', isEqualTo: widget.category)
           .orderBy('createdAt', descending: true)
           .limit(1)
           .get();
 
-      print("[LoadRecent] Firestore 쿼리 결과: ${snapshot.docs.length}개 문서.");
+      // print("[LoadRecent] Firestore 쿼리 결과: ${snapshot.docs.length}개 문서.");
 
       if (snapshot.docs.isNotEmpty) {
         final mostRecentRecipe = snapshot.docs.first;
-        print("[LoadRecent] 가장 최근 레시피 ID: ${mostRecentRecipe.id}");
-        print(
-            "[LoadRecent] 가장 최근 레시피 데이터: ${mostRecentRecipe.data()}"); // <<< 이 로그가 가장 중요!
+        // print("[LoadRecent] 가장 최근 레시피 ID: ${mostRecentRecipe.id}");
+        // print("[LoadRecent] 가장 최근 레시피 데이터: ${mostRecentRecipe.data()}");
 
+        // 데이터 로드 시 _beans, _bloomingSteps를 _loadRecipeData가 채우도록 함
         _loadRecipeData(mostRecentRecipe.id,
-            isForEditing: false); // 불러오기 로직 재활용
+            isForEditing: false); // 데이터 로드 후 필드 채우기
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('최근 레시피를 불러왔습니다.')));
       } else {
-        print("[LoadRecent] 쿼리 조건에 맞는 최근 레시피가 없습니다.");
+        // print("[LoadRecent] 쿼리 조건에 맞는 최근 레시피가 없습니다. 빈 폼으로 시작.");
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('최근 레시피가 없습니다. 새롭게 작성해주세요.')));
-        // ... (최소 원두 입력칸 제공 로직) ...
+        // 데이터가 없으면 빈 폼의 초기 상태를 설정합니다.
+        if (widget.category == "coffee") {
+          setState(() {
+            // setState로 _beans와 _bloomingSteps를 업데이트
+            _beans.clear(); // 혹시 모를 이전 상태 초기화
+            _beans.add({'beanId': null, 'weight': '', 'name': ''}); // 기본 원두 입력칸
+            _bloomingSteps.clear(); // 혹시 모를 이전 상태 초기화
+            _bloomingSteps.add({'water': null, 'time': null}); // 기본 블루밍 입력칸
+            _bloomingWaterControllers.add(TextEditingController());
+            _bloomingTimeControllers.add(TextEditingController());
+          });
+        }
       }
     } catch (e) {
-      print("[LoadRecent] Error loading most recent recipe: $e"); // 에러 메시지 확인
+      // print("[LoadRecent] Error loading most recent recipe: $e");
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('최근 레시피 로드 실패: ${e.toString()}')));
+      // 오류 발생 시에도 빈 폼의 초기 상태를 설정합니다.
       if (widget.category == "coffee" && _beans.isEmpty) {
+        // 이미 초기화되어있을 수 있으므로 _beans.isEmpty 조건 확인
         setState(() {
-          // 오류 발생 시에도 최소 원두 입력칸은 제공
+          _beans.clear();
           _beans.add({'beanId': null, 'weight': '', 'name': ''});
+          _bloomingSteps.clear();
+          _bloomingSteps.add({'water': null, 'time': null});
+          _bloomingWaterControllers.add(TextEditingController());
+          _bloomingTimeControllers.add(TextEditingController());
         });
       }
     }
@@ -134,7 +167,7 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
         // 또는 그냥 null로 두어 사용자가 명시적으로 선택하게 할 수도 있습니다.
       });
     } catch (e) {
-      print("Error fetching available beans: $e");
+      // print("Error fetching available beans: $e");
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('원두 목록 로드 실패: ${e.toString()}')));
     }
@@ -152,15 +185,82 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
         final data = docSnapshot.data()!;
 
         setState(() {
+          // setState로 모든 UI 관련 변수 업데이트
           _dateController.text = data['title'] ?? '';
 
           if (widget.category == "coffee") {
-            _beanType = data['beanType'] ?? 'single';
-            _bloomingWaterController.text =
-                (data['blooming']?['water'] ?? 0).toString();
-            _bloomingTimeController.text =
-                (data['blooming']?['time'] ?? 0).toString();
-            _additionalWater = data['additionalWater'] ?? false;
+            _beanType = data['beanType'] ?? 'single'; // 이 부분은 그대로 둡니다.
+
+            // === 이 아랫부분을 제시해 드린 새 코드로 교체합니다 ===
+            _bloomingSteps.clear(); // 기존 단계 초기화
+            // 기존 컨트롤러를 dispose하지 않으면 메모리 누수 발생
+            for (var c in _bloomingWaterControllers) c.dispose();
+            for (var c in _bloomingTimeControllers) c.dispose();
+            _bloomingWaterControllers.clear();
+            _bloomingTimeControllers.clear();
+
+            // 1. 새로운 bloomingSteps 필드에서 로드 시도
+            if (data.containsKey('bloomingSteps') &&
+                data['bloomingSteps'] is List) {
+              List<dynamic> loadedSteps =
+                  data['bloomingSteps'] as List<dynamic>;
+              for (var step in loadedSteps) {
+                if (step is Map<String, dynamic>) {
+                  // Map 내의 'water'/'time' 필드가 null이 아닐 경우만 추가
+                  _bloomingSteps
+                      .add({'water': step['water'], 'time': step['time']});
+                  _bloomingWaterControllers.add(TextEditingController(
+                      text: (step['water'] ?? '').toString()));
+                  _bloomingTimeControllers.add(TextEditingController(
+                      text: (step['time'] ?? '').toString()));
+                }
+              }
+            }
+            // 2. 만약 bloomingSteps 필드가 없고, 이전의 단일 'blooming' 필드만 있는 경우
+            else if (data.containsKey('blooming') && data['blooming'] is Map) {
+              Map<String, dynamic> oldBlooming = data['blooming'];
+              // 단일 단계를 _bloomingSteps의 첫 요소로 추가
+              _bloomingSteps.add(
+                  {'water': oldBlooming['water'], 'time': oldBlooming['time']});
+              _bloomingWaterControllers.add(TextEditingController(
+                  text: (oldBlooming['water'] ?? '').toString()));
+              _bloomingTimeControllers.add(TextEditingController(
+                  text: (oldBlooming['time'] ?? '').toString()));
+            }
+
+            // 3. 모든 로드 시도 후에도 단계가 없으면 기본 1단계 추가
+            if (_bloomingSteps.isEmpty) {
+              _bloomingSteps.add({'water': null, 'time': null});
+              _bloomingWaterControllers.add(TextEditingController());
+              _bloomingTimeControllers.add(TextEditingController());
+            }
+            // === 이 윗부분을 새 코드로 교체합니다 ===
+            _extractionSteps.clear(); // 기존 단계 초기화
+            for (var c in _extractionWaterControllers)
+              c.dispose(); // 컨트롤러 dispose
+            _extractionWaterControllers.clear();
+
+            if (data.containsKey('extractions') &&
+                data['extractions'] is List) {
+              List<dynamic> loadedExtractions =
+                  data['extractions'] as List<dynamic>;
+              for (var ext in loadedExtractions) {
+                if (ext is Map<String, dynamic>) {
+                  _extractionSteps
+                      .add({'stage': ext['stage'], 'water': ext['water']});
+                  _extractionWaterControllers.add(TextEditingController(
+                      text: (ext['water'] ?? '').toString()));
+                }
+              }
+            }
+
+            // 로드된 extractions 단계가 없으면 기본 1단계 추가
+            if (_extractionSteps.isEmpty) {
+              _extractionSteps.add({'stage': 1, 'water': null});
+              _extractionWaterControllers.add(TextEditingController());
+            }
+            _additionalWater =
+                data['additionalWater'] ?? false; // 이 아랫부분은 그대로 둡니다.
             _additionalWaterAmountController.text =
                 (data['additionalWaterAmount'] ?? 0).toString();
 
@@ -175,12 +275,13 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
             _ingredientsController.text = data['ingredients'] ?? '';
             _instructionsController.text = data['instructions'] ?? '';
           }
-        });
+        }); // setState 닫는 괄호
+
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('레시피 데이터를 불러왔습니다.')));
       }
     } catch (e) {
-      print("Error loading recipe data: $e");
+      // print("Error loading recipe data: $e");
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('레시피 로드 실패: ${e.toString()}')));
     }
@@ -299,6 +400,12 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
           'water': int.tryParse(_bloomingWaterController.text) ?? 0,
           'time': int.tryParse(_bloomingTimeController.text) ?? 0,
         },
+        'extractions': _extractionSteps
+            .map((step) => {
+                  'stage': step['stage'], // 단계 번호는 그대로 저장
+                  'water': int.tryParse(step['water'].toString()) ?? 0,
+                })
+            .toList(),
         'additionalWater': _additionalWater,
         'additionalWaterAmount': _additionalWater
             ? int.tryParse(_additionalWaterAmountController.text) ?? 0
@@ -328,10 +435,30 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
       }
       Navigator.pop(context); // 이전 화면으로 돌아가기
     } catch (e) {
-      print('레시피 저장/수정 오류: $e');
+      // print('레시피 저장/수정 오류: $e');
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('오류 발생: $e')));
     }
+  }
+
+  void _addExtractionStep() {
+    setState(() {
+      _extractionSteps
+          .add({'stage': _extractionSteps.length + 1, 'water': null});
+      _extractionWaterControllers.add(TextEditingController());
+    });
+  }
+
+  void _removeExtractionStep(int index) {
+    setState(() {
+      _extractionSteps.removeAt(index);
+      _extractionWaterControllers[index].dispose(); // 해당 컨트롤러 dispose
+      _extractionWaterControllers.removeAt(index);
+      // 단계 번호 재정렬 (선택 사항)
+      for (int i = index; i < _extractionSteps.length; i++) {
+        _extractionSteps[i]['stage'] = i + 1;
+      }
+    });
   }
 
   @override
@@ -343,11 +470,9 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
     _bloomingWaterController.dispose();
     _bloomingTimeController.dispose();
     _additionalWaterAmountController.dispose();
-    // _beanWeightController.dispose(); // _addSelectedBeanToList 함수에서 사용했으므로 여기서 dispose
-
-    // 필요하다면 동적으로 추가된 TextField 컨트롤러도 dispose해야 하지만,
-    // 현재 구현에서는 하나의 TextField 컨트롤러를 사용하지 않고, 각 항목에 별도의 컨트롤러를 두지 않았습니다.
-    // 만약 각 동적 항목에 TextEditingController를 사용한다면 여기서 dispose 처리가 필요합니다.
+    for (var controller in _extractionWaterControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -357,25 +482,6 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
       appBar: AppBar(
         title: Text(
             '${widget.category == "coffee" ? "커피" : "요리"} 레시피 ${widget.isEditing ? "수정" : "설정"}'),
-        // actions: [
-        //   if (!widget.isEditing) // 수정 모드가 아닐 때만 불러오기 버튼 표시
-        //     IconButton(
-        //       icon: const Icon(Icons.download), // 불러오기 아이콘
-        //       onPressed: () async {
-        //         final selectedRecipeId = await Navigator.push(
-        //           context,
-        //           MaterialPageRoute(
-        //             builder: (context) =>
-        //                 SelectRecipeScreen(category: widget.category),
-        //           ),
-        //         );
-        //         if (selectedRecipeId != null) {
-        //           _loadRecipeData(selectedRecipeId,
-        //               isForEditing: false); // 불러온 레시피ID로 데이터 로드 (새 작성용)
-        //         }
-        //       },
-        //     ),
-        // ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -525,6 +631,67 @@ class _RecipeSetupScreenState extends State<RecipeSetupScreen> {
                   ),
                 ],
               ),
+              if (widget.category == "coffee") ...[
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('추출 단계',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      onPressed: _addExtractionStep, // 추출 단계 추가 버튼
+                    ),
+                  ],
+                ),
+                // 각 추출 단계 입력 필드 동적 생성
+                Column(
+                  children: _extractionSteps.asMap().entries.map((entry) {
+                    int index = entry.key;
+                    Map<String, dynamic> step = entry.value;
+
+                    TextEditingController waterController =
+                        TextEditingController(
+                            text: (step['water'] ?? '').toString());
+                    waterController.addListener(() {
+                      step['water'] =
+                          int.tryParse(waterController.text) ?? null;
+                    });
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                              width: 40,
+                              child: Text('${step['stage']}단계')), // 단계 번호 표시
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: waterController,
+                              decoration: const InputDecoration(
+                                  labelText: '물 (g)',
+                                  border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              onChanged: (value) {
+                                // Listener 대신 onChanged 사용
+                                step['water'] = int.tryParse(value) ?? null;
+                              },
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline,
+                                color: Colors.red),
+                            onPressed: () =>
+                                _removeExtractionStep(index), // 단계 제거 버튼
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
               CheckboxListTile(
                 title: const Text('가수 여부'),
                 value: _additionalWater,

@@ -115,14 +115,17 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                                       recipeData['beans'] as List<dynamic>? ??
                                           [];
                                   return Text(
-                                    beans.isNotEmpty
-                                        ? beans
-                                            .map((bean) =>
-                                                '${bean['beanId'] != null ? beansMap[bean['beanId']] ?? bean['name'] ?? '알 수 없음' : bean['name'] ?? '알 수 없음'}')
-                                            .join(', ')
-                                        : '원두 없음',
-                                    overflow: TextOverflow.ellipsis,
+                                    recipeData['title'],
                                   );
+                                  // Text(
+                                  //   beans.isNotEmpty
+                                  //       ? beans
+                                  //           .map((bean) =>
+                                  //               '${bean['beanId'] != null ? beansMap[bean['beanId']] ?? bean['name'] ?? '알 수 없음' : bean['name'] ?? '알 수 없음'}')
+                                  //           .join(', ')
+                                  //       : '원두 없음',
+                                  //   overflow: TextOverflow.ellipsis,
+                                  // );
                                 },
                               )
                             : Text(recipeData['recipeName'] ?? '요리 이름 없음'),
