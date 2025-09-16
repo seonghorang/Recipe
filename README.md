@@ -16,8 +16,8 @@
 - 복잡한 비동기 처리 및 실시간 통신을 요구하는 기능(음성, 푸시 알림) 구현을 통한 기술 역량 심화
 
 ### 기술 스택:
-- **Frontend**: Flutter (Dart), `fl_chart` (데이터 시각화), `just_audio` (오디오 재생), `record` (오디오 녹음)
-- **Backend**: Firebase Firestore (실시간 NoSQL 데이터베이스), Firebase Storage (오디오 파일 저장), Firebase Cloud Functions (서버리스 백엔드 로직), Firebase Cloud Messaging (푸시 알림)
+- **Frontend**: `Flutter` (Dart), `fl_chart` (데이터 시각화), `just_audio` (오디오 재생), `record` (오디오 녹음)
+- **Backend**: `Firebase Firestore` (실시간 NoSQL 데이터베이스), `Firebase Storage` (오디오 파일 저장), `Firebase Cloud Functions` (서버리스 백엔드 로직), `Firebase Cloud Messaging` (푸시 알림)
 - **Version Control**: GitHub
 
 ### 주요 기능:
@@ -73,3 +73,4 @@
     - `just_audio`의 `AudioPlayer` 인스턴스가 `ProcessingState.completed` 상태에 도달했을 때 `player.stop()` 대신 `player.pause()`와 `player.seek(Duration.zero)`를 사용하여 플레이어 리소스를 해제하지 않고 **"준비된(ready)" 상태로 유지**. 이를 통해 불필요한 `MediaCodec` 재초기화를 줄여 재생 지연을 대폭 개선.
     - `player.setUrl()` 호출 전에 `player.stop()` 및 `player.seek(Duration.zero)`를 호출하여 이전 연결의 잔상을 정리함으로써 `Connection aborted` 오류를 방지.
 
+---
