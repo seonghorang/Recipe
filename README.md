@@ -8,6 +8,8 @@
 <img src="assets/Recording.gif" alt="Recipe Manager Demo" width="225" height="400">
 <br>
 
+---
+
 ## 프로젝트 개요
 
 ### 목표:
@@ -29,6 +31,8 @@
 
 ### 상태:
 - 지속적 유지보수 중 (최근 업데이트: 2025년 9월 16일)
+
+---
 
 ## 주요 기능 상세
 
@@ -52,6 +56,8 @@
 ### 5. 반응형 디자인
 - 브라운 테마 기반의 일관된 UI/UX.
 - 긴 폼(`SingleChildScrollView`) 및 디바이스 노치/네비게이션바(`SafeArea`)에 대응하는 UI 최적화.
+
+---
 
 ## 기술적 문제와 해결
 
